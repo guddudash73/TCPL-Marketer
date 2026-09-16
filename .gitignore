@@ -1,0 +1,47 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# build output
+.next/
+dist/
+build/
+out/
+coverage/
+.turbo/
+
+# logs
+*.log
+logs/
+
+# tests
+playwright-report/
+test-results/
+.nyc_output/
+
+# local runtime data
+data/
+tmp/
+temp/
+*.sqlite
+*.sqlite3
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# credentials/certs
+*.pem
+*.key
+*.p12
+*.pfx
+
+# local n8n data
+.n8n/
