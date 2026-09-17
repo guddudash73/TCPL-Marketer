@@ -1,6 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 
-import { PrismaClient } from "../generated/prisma/client.ts";
+import { PrismaClient } from "./generated/prisma/client.ts";
 
 const defaultDatabaseUrl =
   "postgresql://app:app@localhost:5432/tcpl_marketer";

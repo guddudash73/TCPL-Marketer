@@ -4,18 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "predev": "pnpm --filter @tcpl-marketer/database build",
+    "dev": "nest start --watch --builder tsc --path tsconfig.build.json",
+    "prebuild": "pnpm --filter @tcpl-marketer/database build",
     "start": "node dist/main.js",
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
+    "pretypecheck": "pnpm --filter @tcpl-marketer/database build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "pretest": "pnpm --filter @tcpl-marketer/database build",
+    "test": "vitest run",
+    "seed:admin": "pnpm --filter @tcpl-marketer/database build && tsx --env-file-if-exists=../../.env src/auth/seed-admin.ts"
   },
   "dependencies": {
-    "@nestjs/common": "12.0.2",
-    "@nestjs/core": "12.0.2",
-    "@nestjs/platform-express": "12.0.2",
+    "@nestjs/common": "12.0.3",
+    "@nestjs/core": "12.0.3",
+    "@nestjs/platform-express": "12.0.3",
     "@nestjs/swagger": "12.0.1",
+    "@tcpl-marketer/database": "workspace:*",
     "nestjs-pino": "5.2.0",
     "pino": "10.3.1",
     "pino-http": "11.0.0",
@@ -24,17 +30,18 @@
     "zod": "4.6.5"
   },
   "devDependencies": {
-    "@nestjs/testing": "12.0.2",
-    "@types/node": "24.10.1",
-    "@types/supertest": "6.0.3",
     "@eslint/js": "9.39.1",
+    "@nestjs/cli": "12.0.3",
+    "@nestjs/testing": "12.0.3",
+    "@types/node": "24.13.5",
+    "@types/supertest": "7.2.1",
     "@typescript-eslint/eslint-plugin": "8.70.0",
     "@typescript-eslint/parser": "8.70.0",
     "eslint": "9.39.1",
-    "supertest": "7.1.4",
-    "tsx": "4.21.0",
-    "typescript": "5.9.3",
+    "supertest": "7.2.2",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3",
     "typescript-eslint": "8.70.0",
-    "vitest": "4.0.18"
+    "vitest": "4.1.11"
   }
 }

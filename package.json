@@ -2,10 +2,10 @@
   "name": "tcpl-marketer",
   "version": "0.0.0",
   "private": true,
-  "packageManager": "pnpm@12.4.1",
+  "packageManager": "pnpm@12.4.2",
   "engines": {
     "node": ">=24.21.0 <25",
-    "pnpm": "12.4.1"
+    "pnpm": "12.4.2"
   },
   "scripts": {
     "dev": "turbo dev --filter=@tcpl-marketer/web",
@@ -16,6 +16,6 @@
     "prisma:validate": "pnpm --filter @tcpl-marketer/database validate"
   },
   "devDependencies": {
-    "turbo": "2.10.10"
+    "turbo": "2.10.13"
   }
 }

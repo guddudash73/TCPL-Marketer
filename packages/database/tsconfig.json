@@ -8,5 +8,5 @@
     "target": "ES2024",
     "types": ["node"]
   },
-  "include": ["prisma.config.ts", "src/**/*.ts", "generated/**/*.ts"]
+  "include": ["prisma.config.ts", "src/**/*.ts"]
 }
