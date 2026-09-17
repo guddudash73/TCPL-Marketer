@@ -12,7 +12,7 @@ const password = 'D007-Test-Password!2026';
 const database = createPrismaClient();
 
 describe('authentication and RBAC', () => {
-  let app: INestApplication;
+  let app: INestApplication | undefined;
   let testUserIds: string[] = [];
 
   beforeAll(async () => {
@@ -42,20 +42,29 @@ describe('authentication and RBAC', () => {
   });
 
   afterAll(async () => {
-    await app.close();
-    await database.auditLog.deleteMany({
-      where: {
-        OR: [
-          { actorUserId: { in: testUserIds } },
-          { resourceId: { in: [...testUserIds, adminEmail, memberEmail] } },
-        ],
-      },
-    });
-    await database.user.deleteMany({ where: { email: { in: [adminEmail, memberEmail] } } });
-    await database.$disconnect();
+    try {
+      if (app) {
+        await app.close();
+      }
+
+      if (testUserIds.length > 0) {
+        await database.auditLog.deleteMany({
+          where: {
+            OR: [
+              { actorUserId: { in: testUserIds } },
+              { resourceId: { in: [...testUserIds, adminEmail, memberEmail] } },
+            ],
+          },
+        });
+        await database.user.deleteMany({ where: { email: { in: [adminEmail, memberEmail] } } });
+      }
+    } finally {
+      await database.$disconnect();
+    }
   });
 
   it('logs in the admin and permits the ADMIN route', async () => {
+    expect(app).toBeDefined();
     const agent = request.agent(app.getHttpServer());
     const login = await agent
       .post('/auth/login')
@@ -74,12 +83,14 @@ describe('authentication and RBAC', () => {
   });
 
   it('denies an authenticated user without the ADMIN role', async () => {
+    expect(app).toBeDefined();
     const agent = request.agent(app.getHttpServer());
     await agent.post('/auth/login').send({ email: memberEmail, password }).expect(200);
     await agent.get('/admin/ping').expect(403);
   });
 
   it('rejects invalid credentials without exposing password data', async () => {
+    expect(app).toBeDefined();
     await request(app.getHttpServer())
       .post('/auth/login')
       .send({ email: memberEmail, password: 'wrong-password' })

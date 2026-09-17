@@ -11,12 +11,29 @@ jobs:
   verify:
     name: Verify
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://app:app@localhost:5432/tcpl_marketer
+      DIRECT_URL: postgresql://app:app@localhost:5432/tcpl_marketer
+    services:
+      postgres:
+        image: postgres:18.6
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: tcpl_marketer
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d tcpl_marketer"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 12.4.2
           run_install: false
@@ -38,6 +55,9 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: Apply CI database migrations
+        run: pnpm --filter @tcpl-marketer/database exec prisma migrate deploy
 
       - name: Test
         run: pnpm test
