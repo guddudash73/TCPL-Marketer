@@ -59,6 +59,9 @@ jobs:
       - name: Apply CI database migrations
         run: pnpm --filter @tcpl-marketer/database exec prisma migrate deploy
 
+      - name: Seed CI business configuration
+        run: pnpm --filter @tcpl-marketer/database seed:configuration
+
       - name: Test
         run: pnpm test
 
