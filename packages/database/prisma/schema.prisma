@@ -15,17 +15,17 @@ enum UserStatus {
 }
 
 model User {
-  id           String       @id @default(uuid()) @db.Uuid
-  email        String       @unique @db.VarChar(320)
-  displayName  String?      @map("display_name") @db.VarChar(160)
-  passwordHash String       @map("password_hash") @db.VarChar(255)
-  status       UserStatus   @default(ACTIVE)
-  lastLoginAt  DateTime?    @map("last_login_at") @db.Timestamptz(6)
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           String        @id @default(uuid()) @db.Uuid
+  email        String        @unique @db.VarChar(320)
+  displayName  String?       @map("display_name") @db.VarChar(160)
+  passwordHash String        @map("password_hash") @db.VarChar(255)
+  status       UserStatus    @default(ACTIVE)
+  lastLoginAt  DateTime?     @map("last_login_at") @db.Timestamptz(6)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
   roles        UserRole[]
   sessions     UserSession[]
-  auditLogs    AuditLog[]   @relation("AuditActor")
+  auditLogs    AuditLog[]    @relation("AuditActor")
 
   @@map("users")
 }
@@ -53,13 +53,13 @@ model UserRole {
 }
 
 model UserSession {
-  id         String    @id @default(uuid()) @db.Uuid
-  userId     String    @map("user_id") @db.Uuid
-  tokenHash  String    @unique @map("token_hash") @db.Char(64)
-  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
-  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
   @@map("user_sessions")
@@ -78,4 +78,101 @@ model AuditLog {
   @@index([actorUserId, createdAt])
   @@index([resourceType, resourceId])
   @@map("audit_logs")
+}
+
+model Sector {
+  id            String              @id @default(uuid()) @db.Uuid
+  name          String              @db.VarChar(160)
+  slug          String              @unique @db.VarChar(160)
+  description   String?             @db.Text
+  terminology   String[]            @default([])
+  geographies   String[]            @default([])
+  negativeTerms String[]            @default([]) @map("negative_terms")
+  researchRules Json?               @map("research_rules")
+  isActive      Boolean             @default(true) @map("is_active")
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  capabilities  ServiceCapability[]
+
+  @@map("sectors")
+}
+
+model ServiceCapability {
+  id               String                  @id @default(uuid()) @db.Uuid
+  sectorId         String                  @map("sector_id") @db.Uuid
+  name             String                  @db.VarChar(160)
+  slug             String                  @db.VarChar(160)
+  description      String?                 @db.Text
+  businessProblems String[]                @default([]) @map("business_problems")
+  businessValue    String?                 @map("business_value") @db.Text
+  searchGuidance   Json?                   @map("search_guidance")
+  researchGuidance Json?                   @map("research_guidance")
+  isActive         Boolean                 @default(true) @map("is_active")
+  createdAt        DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sector           Sector                  @relation(fields: [sectorId], references: [id], onDelete: Cascade)
+  deliverables     CapabilityDeliverable[]
+  targetProfiles   TargetClientProfile[]
+  decisionMakers   DecisionMakerProfile[]
+
+  @@unique([sectorId, slug])
+  @@index([sectorId, isActive])
+  @@map("service_capabilities")
+}
+
+model CapabilityDeliverable {
+  id           String            @id @default(uuid()) @db.Uuid
+  capabilityId String            @map("capability_id") @db.Uuid
+  name         String            @db.VarChar(160)
+  slug         String            @db.VarChar(160)
+  description  String?           @db.Text
+  isActive     Boolean           @default(true) @map("is_active")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  capability   ServiceCapability @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+
+  @@unique([capabilityId, slug])
+  @@index([capabilityId, isActive])
+  @@map("capability_deliverables")
+}
+
+model TargetClientProfile {
+  id                         String            @id @default(uuid()) @db.Uuid
+  capabilityId               String            @map("capability_id") @db.Uuid
+  name                       String            @db.VarChar(160)
+  slug                       String            @db.VarChar(160)
+  companyCharacteristics     Json?             @map("company_characteristics")
+  minimumEmployees           Int?              @map("minimum_employees")
+  maximumEmployees           Int?              @map("maximum_employees")
+  geographies                String[]          @default([])
+  positiveTerms              String[]          @default([]) @map("positive_terms")
+  negativeTerms              String[]          @default([]) @map("negative_terms")
+  typicalBusinessModel       String?           @map("typical_business_model") @db.Text
+  outsourcingCharacteristics String?           @map("outsourcing_characteristics") @db.Text
+  isActive                   Boolean           @default(true) @map("is_active")
+  createdAt                  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  capability                 ServiceCapability @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+
+  @@unique([capabilityId, slug])
+  @@index([capabilityId, isActive])
+  @@map("target_client_profiles")
+}
+
+model DecisionMakerProfile {
+  id            String            @id @default(uuid()) @db.Uuid
+  capabilityId  String            @map("capability_id") @db.Uuid
+  title         String            @db.VarChar(160)
+  priority      Int
+  seniorities   String[]          @default([])
+  positiveTerms String[]          @default([]) @map("positive_terms")
+  negativeTerms String[]          @default([]) @map("negative_terms")
+  isActive      Boolean           @default(true) @map("is_active")
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  capability    ServiceCapability @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+
+  @@unique([capabilityId, title])
+  @@index([capabilityId, priority])
+  @@map("decision_maker_profiles")
 }
