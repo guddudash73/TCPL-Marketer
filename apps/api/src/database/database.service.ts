@@ -1,5 +1,5 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import { createPrismaClient, type PrismaClient } from '@tcpl-marketer/database';
+import { Injectable, OnModuleDestroy } from "@nestjs/common";
+import { createPrismaClient, type PrismaClient } from "@tcpl-marketer/database";
 
 @Injectable()
 export class DatabaseService implements OnModuleDestroy {

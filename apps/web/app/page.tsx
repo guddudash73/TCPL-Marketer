@@ -1,5 +1,5 @@
-import { ConfigurationAdmin } from "./configuration-admin";
+import { CampaignBuilder } from "./campaign-builder";
 
 export default function HomePage() {
-  return <ConfigurationAdmin />;
+  return <CampaignBuilder />;
 }

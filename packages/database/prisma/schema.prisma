@@ -14,6 +14,20 @@ enum UserStatus {
   DISABLED
 }
 
+enum CampaignStatus {
+  DRAFT
+  STARTING
+  RUNNING
+  PAUSED
+  COMPLETED
+  STOPPED
+  FAILED
+}
+
+enum CampaignAutomationMode {
+  MANUAL_REVIEW
+}
+
 model User {
   id           String        @id @default(uuid()) @db.Uuid
   email        String        @unique @db.VarChar(320)
@@ -26,6 +40,7 @@ model User {
   roles        UserRole[]
   sessions     UserSession[]
   auditLogs    AuditLog[]    @relation("AuditActor")
+  campaigns    Campaign[]    @relation("CampaignCreator")
 
   @@map("users")
 }
@@ -93,6 +108,7 @@ model Sector {
   createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
   capabilities  ServiceCapability[]
+  campaigns     Campaign[]
 
   @@map("sectors")
 }
@@ -114,6 +130,7 @@ model ServiceCapability {
   deliverables     CapabilityDeliverable[]
   targetProfiles   TargetClientProfile[]
   decisionMakers   DecisionMakerProfile[]
+  campaigns        CampaignCapability[]
 
   @@unique([sectorId, slug])
   @@index([sectorId, isActive])
@@ -130,6 +147,7 @@ model CapabilityDeliverable {
   createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   capability   ServiceCapability @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+  campaigns    CampaignDeliverable[]
 
   @@unique([capabilityId, slug])
   @@index([capabilityId, isActive])
@@ -153,6 +171,7 @@ model TargetClientProfile {
   createdAt                  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                  DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   capability                 ServiceCapability @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+  campaigns                  CampaignTarget[]
 
   @@unique([capabilityId, slug])
   @@index([capabilityId, isActive])
@@ -175,4 +194,82 @@ model DecisionMakerProfile {
   @@unique([capabilityId, title])
   @@index([capabilityId, priority])
   @@map("decision_maker_profiles")
+}
+
+model Campaign {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  name                   String                 @db.VarChar(160)
+  sectorId               String                 @map("sector_id") @db.Uuid
+  createdByUserId        String                 @map("created_by_user_id") @db.Uuid
+  status                 CampaignStatus         @default(DRAFT)
+  automationMode         CampaignAutomationMode @default(MANUAL_REVIEW) @map("automation_mode")
+  researchDepth          String                 @map("research_depth") @db.VarChar(32)
+  countries              String[]               @default([])
+  states                 String[]               @default([])
+  cities                 String[]               @default([])
+  minimumEmployees       Int?                   @map("minimum_employees")
+  maximumEmployees       Int?                   @map("maximum_employees")
+  targetLeadCount        Int                    @map("target_lead_count")
+  minimumScore           Int                    @map("minimum_score")
+  dailyEmailLimit        Int                    @map("daily_email_limit")
+  createdAt              DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sector                 Sector                 @relation(fields: [sectorId], references: [id], onDelete: Restrict)
+  createdBy              User                   @relation("CampaignCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  capabilities           CampaignCapability[]
+  deliverables           CampaignDeliverable[]
+  targets                CampaignTarget[]
+  sequenceSteps          CampaignSequenceStep[]
+
+  @@index([status, createdAt])
+  @@index([sectorId])
+  @@index([createdByUserId])
+  @@map("campaigns")
+}
+
+model CampaignCapability {
+  campaignId   String            @map("campaign_id") @db.Uuid
+  capabilityId String            @map("capability_id") @db.Uuid
+  campaign     Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  capability   ServiceCapability @relation(fields: [capabilityId], references: [id], onDelete: Restrict)
+
+  @@id([campaignId, capabilityId])
+  @@index([capabilityId])
+  @@map("campaign_capabilities")
+}
+
+model CampaignDeliverable {
+  campaignId    String                @map("campaign_id") @db.Uuid
+  deliverableId String                @map("deliverable_id") @db.Uuid
+  campaign      Campaign              @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  deliverable   CapabilityDeliverable @relation(fields: [deliverableId], references: [id], onDelete: Restrict)
+
+  @@id([campaignId, deliverableId])
+  @@index([deliverableId])
+  @@map("campaign_deliverables")
+}
+
+model CampaignTarget {
+  campaignId            String              @map("campaign_id") @db.Uuid
+  targetClientProfileId String              @map("target_client_profile_id") @db.Uuid
+  campaign              Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  targetClientProfile   TargetClientProfile @relation(fields: [targetClientProfileId], references: [id], onDelete: Restrict)
+
+  @@id([campaignId, targetClientProfileId])
+  @@index([targetClientProfileId])
+  @@map("campaign_targets")
+}
+
+model CampaignSequenceStep {
+  id         String   @id @default(uuid()) @db.Uuid
+  campaignId String   @map("campaign_id") @db.Uuid
+  stepNumber Int      @map("step_number")
+  delayDays  Int      @map("delay_days")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, stepNumber])
+  @@index([campaignId, stepNumber])
+  @@map("campaign_sequence_steps")
 }

@@ -8,7 +8,8 @@ async function seedConfiguration(): Promise<void> {
     create: {
       name: "LiDAR",
       slug: "lidar",
-      description: "Light detection and ranging data acquisition and processing.",
+      description:
+        "Light detection and ranging data acquisition and processing.",
       terminology: ["LiDAR", "point cloud", "laser scanning"],
       geographies: ["United States"],
       negativeTerms: ["consumer lidar", "automotive lidar sensor"],
@@ -33,9 +34,14 @@ async function seedConfiguration(): Promise<void> {
         "Large acquired data volumes create production backlogs",
         "Internal teams need elastic processing capacity",
       ],
-      businessValue: "Reliable outsourced production capacity for survey and acquisition teams.",
+      businessValue:
+        "Reliable outsourced production capacity for survey and acquisition teams.",
       searchGuidance: {
-        include: ["airborne lidar survey", "aerial mapping", "geospatial acquisition"],
+        include: [
+          "airborne lidar survey",
+          "aerial mapping",
+          "geospatial acquisition",
+        ],
       },
       researchGuidance: {
         lookFor: ["LiDAR acquisition", "survey aircraft", "mapping contracts"],
@@ -44,8 +50,18 @@ async function seedConfiguration(): Promise<void> {
     update: {},
   });
 
-  for (const name of ["Classification", "DTM", "DSM", "Feature Extraction", "QA/QC"]) {
-    const slug = name.toLowerCase().replaceAll("/", "-").replaceAll(/[^a-z0-9]+/g, "-").replaceAll(/^-|-$/g, "");
+  for (const name of [
+    "Classification",
+    "DTM",
+    "DSM",
+    "Feature Extraction",
+    "QA/QC",
+  ]) {
+    const slug = name
+      .toLowerCase()
+      .replaceAll("/", "-")
+      .replaceAll(/[^a-z0-9]+/g, "-")
+      .replaceAll(/^-|-$/g, "");
     await database.capabilityDeliverable.upsert({
       where: { capabilityId_slug: { capabilityId: capability.id, slug } },
       create: { capabilityId: capability.id, name, slug },
@@ -71,8 +87,10 @@ async function seedConfiguration(): Promise<void> {
       geographies: ["United States"],
       positiveTerms: ["airborne LiDAR", "aerial survey", "geospatial mapping"],
       negativeTerms: ["sensor manufacturer", "consumer electronics"],
-      typicalBusinessModel: "Acquires geospatial data for mapping and survey projects.",
-      outsourcingCharacteristics: "May outsource processing when project volume exceeds internal production capacity.",
+      typicalBusinessModel:
+        "Acquires geospatial data for mapping and survey projects.",
+      outsourcingCharacteristics:
+        "May outsource processing when project volume exceeds internal production capacity.",
     },
     update: {},
   });

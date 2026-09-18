@@ -1,11 +1,17 @@
-import { CanActivate, ExecutionContext, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import {
+  CanActivate,
+  ExecutionContext,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 
-import { AuthService } from './auth.service.js';
-import type { AuthenticatedRequest } from './auth.types.js';
-import { PUBLIC_ROUTE_KEY } from './public.decorator.js';
+import { AuthService } from "./auth.service.js";
+import type { AuthenticatedRequest } from "./auth.types.js";
+import { PUBLIC_ROUTE_KEY } from "./public.decorator.js";
 
-export const SESSION_COOKIE_NAME = 'tcpl_session';
+export const SESSION_COOKIE_NAME = "tcpl_session";
 
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
@@ -15,10 +21,10 @@ export class SessionAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(PUBLIC_ROUTE_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const isPublic = this.reflector.getAllAndOverride<boolean>(
+      PUBLIC_ROUTE_KEY,
+      [context.getHandler(), context.getClass()],
+    );
     if (isPublic) {
       return true;
     }
@@ -26,7 +32,7 @@ export class SessionAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = extractSessionToken(request.headers);
     if (!token) {
-      throw new UnauthorizedException('Authentication required');
+      throw new UnauthorizedException("Authentication required");
     }
 
     request.user = await this.auth.authenticateSession(token);
@@ -35,11 +41,13 @@ export class SessionAuthGuard implements CanActivate {
   }
 }
 
-function extractSessionToken(headers: AuthenticatedRequest['headers']): string | undefined {
+function extractSessionToken(
+  headers: AuthenticatedRequest["headers"],
+): string | undefined {
   const authorization = firstHeader(headers.authorization);
   if (authorization) {
-    const [scheme, token] = authorization.split(' ');
-    if (scheme?.toLowerCase() === 'bearer' && token) {
+    const [scheme, token] = authorization.split(" ");
+    if (scheme?.toLowerCase() === "bearer" && token) {
       return token;
     }
   }
@@ -48,8 +56,8 @@ function extractSessionToken(headers: AuthenticatedRequest['headers']): string |
   if (!cookieHeader) {
     return undefined;
   }
-  for (const cookie of cookieHeader.split(';')) {
-    const separator = cookie.indexOf('=');
+  for (const cookie of cookieHeader.split(";")) {
+    const separator = cookie.indexOf("=");
     if (separator === -1) {
       continue;
     }

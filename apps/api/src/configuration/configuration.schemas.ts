@@ -1,10 +1,20 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 const name = z.string().trim().min(1).max(160);
-const slug = z.string().trim().min(1).max(160).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+const slug = z
+  .string()
+  .trim()
+  .min(1)
+  .max(160)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const text = z.string().trim().min(1);
 const stringList = z.array(z.string().trim().min(1)).default([]);
-const jsonValue = z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]);
+const jsonValue = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.array(z.string()),
+]);
 const jsonObject = z.record(z.string(), jsonValue);
 
 export const uuidSchema = z.string().uuid();
@@ -57,18 +67,27 @@ const targetProfileFields = {
   outsourcingCharacteristics: text.nullable().optional(),
   isActive: z.boolean().optional(),
 };
-const validEmployeeRange = ({ minimumEmployees, maximumEmployees }: {
+const validEmployeeRange = ({
+  minimumEmployees,
+  maximumEmployees,
+}: {
   minimumEmployees?: number | null;
   maximumEmployees?: number | null;
-}) => minimumEmployees == null || maximumEmployees == null || minimumEmployees <= maximumEmployees;
-export const createTargetProfileSchema = z.strictObject(targetProfileFields).refine(
-  validEmployeeRange,
-  { message: 'minimumEmployees must not exceed maximumEmployees' },
-);
-export const updateTargetProfileSchema = z.strictObject(targetProfileFields).partial().refine(
-  validEmployeeRange,
-  { message: 'minimumEmployees must not exceed maximumEmployees' },
-);
+}) =>
+  minimumEmployees == null ||
+  maximumEmployees == null ||
+  minimumEmployees <= maximumEmployees;
+export const createTargetProfileSchema = z
+  .strictObject(targetProfileFields)
+  .refine(validEmployeeRange, {
+    message: "minimumEmployees must not exceed maximumEmployees",
+  });
+export const updateTargetProfileSchema = z
+  .strictObject(targetProfileFields)
+  .partial()
+  .refine(validEmployeeRange, {
+    message: "minimumEmployees must not exceed maximumEmployees",
+  });
 
 export const createDecisionMakerSchema = z.strictObject({
   capabilityId: uuidSchema,
@@ -87,7 +106,15 @@ export type CreateCapabilityInput = z.infer<typeof createCapabilitySchema>;
 export type UpdateCapabilityInput = z.infer<typeof updateCapabilitySchema>;
 export type CreateDeliverableInput = z.infer<typeof createDeliverableSchema>;
 export type UpdateDeliverableInput = z.infer<typeof updateDeliverableSchema>;
-export type CreateTargetProfileInput = z.infer<typeof createTargetProfileSchema>;
-export type UpdateTargetProfileInput = z.infer<typeof updateTargetProfileSchema>;
-export type CreateDecisionMakerInput = z.infer<typeof createDecisionMakerSchema>;
-export type UpdateDecisionMakerInput = z.infer<typeof updateDecisionMakerSchema>;
+export type CreateTargetProfileInput = z.infer<
+  typeof createTargetProfileSchema
+>;
+export type UpdateTargetProfileInput = z.infer<
+  typeof updateTargetProfileSchema
+>;
+export type CreateDecisionMakerInput = z.infer<
+  typeof createDecisionMakerSchema
+>;
+export type UpdateDecisionMakerInput = z.infer<
+  typeof updateDecisionMakerSchema
+>;

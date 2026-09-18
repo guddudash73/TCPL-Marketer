@@ -4,8 +4,8 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
-} from '@nestjs/common';
-import { Logger } from 'nestjs-pino';
+} from "@nestjs/common";
+import { Logger } from "nestjs-pino";
 
 interface RequestWithId {
   id?: string;
@@ -30,7 +30,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const status = isHttpException
       ? exception.getStatus()
       : HttpStatus.INTERNAL_SERVER_ERROR;
-    const exceptionResponse = isHttpException ? exception.getResponse() : undefined;
+    const exceptionResponse = isHttpException
+      ? exception.getResponse()
+      : undefined;
     const message = getMessage(exceptionResponse, isHttpException);
 
     this.logger.error(
@@ -41,29 +43,32 @@ export class HttpExceptionFilter implements ExceptionFilter {
         path: request.url,
         status,
       },
-      'Request failed',
+      "Request failed",
     );
 
     response.status(status).json({
       statusCode: status,
-      error: isHttpException ? 'HTTP_ERROR' : 'INTERNAL_SERVER_ERROR',
+      error: isHttpException ? "HTTP_ERROR" : "INTERNAL_SERVER_ERROR",
       message,
       correlationId: request.id,
     });
   }
 }
 
-function getMessage(response: string | object | undefined, isHttpException: boolean): string | string[] {
-  if (typeof response === 'string') {
+function getMessage(
+  response: string | object | undefined,
+  isHttpException: boolean,
+): string | string[] {
+  if (typeof response === "string") {
     return response;
   }
 
-  if (response && 'message' in response) {
+  if (response && "message" in response) {
     const message = response.message;
-    if (typeof message === 'string' || Array.isArray(message)) {
+    if (typeof message === "string" || Array.isArray(message)) {
       return message;
     }
   }
 
-  return isHttpException ? 'Request failed' : 'An unexpected error occurred';
+  return isHttpException ? "Request failed" : "An unexpected error occurred";
 }

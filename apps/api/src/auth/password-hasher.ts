@@ -1,6 +1,6 @@
-import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 
-import { Injectable } from '@nestjs/common';
+import { Injectable } from "@nestjs/common";
 
 const KEY_LENGTH = 64;
 const SCRYPT_COST = 16_384;
@@ -21,20 +21,26 @@ export class PasswordHasher {
     );
 
     return [
-      'scrypt',
+      "scrypt",
       SCRYPT_COST,
       SCRYPT_BLOCK_SIZE,
       SCRYPT_PARALLELIZATION,
-      salt.toString('base64url'),
-      derivedKey.toString('base64url'),
-    ].join('$');
+      salt.toString("base64url"),
+      derivedKey.toString("base64url"),
+    ].join("$");
   }
 
   async verify(password: string, storedHash: string): Promise<boolean> {
-    const [algorithm, costText, blockSizeText, parallelizationText, saltText, hashText] =
-      storedHash.split('$');
+    const [
+      algorithm,
+      costText,
+      blockSizeText,
+      parallelizationText,
+      saltText,
+      hashText,
+    ] = storedHash.split("$");
     if (
-      algorithm !== 'scrypt' ||
+      algorithm !== "scrypt" ||
       !costText ||
       !blockSizeText ||
       !parallelizationText ||
@@ -56,15 +62,17 @@ export class PasswordHasher {
     }
 
     try {
-      const expected = Buffer.from(hashText, 'base64url');
+      const expected = Buffer.from(hashText, "base64url");
       const actual = await deriveKey(
         password,
-        Buffer.from(saltText, 'base64url'),
+        Buffer.from(saltText, "base64url"),
         cost,
         blockSize,
         parallelization,
       );
-      return actual.length === expected.length && timingSafeEqual(actual, expected);
+      return (
+        actual.length === expected.length && timingSafeEqual(actual, expected)
+      );
     } catch {
       return false;
     }

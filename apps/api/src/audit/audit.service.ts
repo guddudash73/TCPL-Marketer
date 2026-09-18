@@ -1,6 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from "@nestjs/common";
 
-import { DatabaseService } from '../database/database.service.js';
+import { DatabaseService } from "../database/database.service.js";
 
 interface AuditEntry {
   action: string;
@@ -12,7 +12,9 @@ interface AuditEntry {
 
 @Injectable()
 export class AuditService {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+  ) {}
 
   async record(entry: AuditEntry): Promise<void> {
     await this.database.client.auditLog.create({

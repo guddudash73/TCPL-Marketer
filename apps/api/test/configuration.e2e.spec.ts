@@ -27,6 +27,11 @@ describe('business configuration CRUD', () => {
       create: { name: 'ADMIN', description: 'Full platform administration' },
       update: {},
     });
+    const managerRole = await database.role.upsert({
+      where: { name: 'MANAGER' },
+      create: { name: 'MANAGER', description: 'Campaign management' },
+      update: {},
+    });
     const adminUser = await database.user.create({
       data: {
         email: adminEmail,
@@ -36,7 +41,12 @@ describe('business configuration CRUD', () => {
       },
     });
     const memberUser = await database.user.create({
-      data: { email: memberEmail, displayName: 'D008a Member', passwordHash },
+      data: {
+        email: memberEmail,
+        displayName: 'D009b Manager',
+        passwordHash,
+        roles: { create: { roleId: managerRole.id } },
+      },
     });
     testUserIds = [adminUser.id, memberUser.id];
 
@@ -77,10 +87,14 @@ describe('business configuration CRUD', () => {
     expect(lidar.capabilities[0].decisionMakers).toHaveLength(6);
   });
 
-  it('requires authentication and the ADMIN role', async () => {
+  it('allows MANAGER read-only configuration access but preserves ADMIN-only mutations', async () => {
     expect(app).toBeDefined();
     await request(app!.getHttpServer()).get('/sectors').expect(401);
-    await member.get('/sectors').expect(403);
+    await member.get('/sectors').expect(200);
+    await member.get('/capabilities').expect(200);
+    await member.get('/deliverables').expect(200);
+    await member.get('/target-client-profiles').expect(200);
+    await member.get('/decision-maker-profiles').expect(200);
     await member.post('/sectors').send({ name: 'Forbidden Sector' }).expect(403);
   });
 
