@@ -1,0 +1,134 @@
+{
+  "id": "D010CampaignStart",
+  "name": "TCPL Campaign Start",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "campaign-start",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "campaign-start-webhook",
+      "name": "Campaign Started",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-640, 0],
+      "webhookId": "tcpl-campaign-start",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tcpl-nestjs-service",
+          "name": "TCPL NestJS Service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "service-timestamp",
+              "name": "serviceTimestamp",
+              "value": "={{ Date.now().toString() }}",
+              "type": "string"
+            },
+            {
+              "id": "context-path",
+              "name": "contextPath",
+              "value": "={{ '/internal/campaigns/' + $json.body.event.aggregateId + '/context' }}",
+              "type": "string"
+            },
+            {
+              "id": "event-id",
+              "name": "eventId",
+              "value": "={{ $json.body.event.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "prepare-service-request",
+      "name": "Prepare Service Request",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-400, 0]
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.serviceTimestamp + '\\nGET\\n' + $json.contextPath }}",
+        "secret": "={{ $env.N8N_SERVICE_SECRET }}",
+        "encoding": "hex"
+      },
+      "id": "sign-service-request",
+      "name": "Sign Service Request",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [-160, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.TCPL_API_URL + $json.contextPath }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-service-timestamp",
+              "value": "={{ $json.serviceTimestamp }}"
+            },
+            {
+              "name": "x-service-signature",
+              "value": "={{ $json.data }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "load-campaign-context",
+      "name": "Load Campaign Context from NestJS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [80, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { executionId: $execution.id, campaignId: $json.id, status: $json.status } }}",
+        "options": {}
+      },
+      "id": "confirm-orchestration",
+      "name": "Confirm Orchestration",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [320, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Campaign Started": {
+      "main": [[{"node": "Prepare Service Request", "type": "main", "index": 0}]]
+    },
+    "Prepare Service Request": {
+      "main": [[{"node": "Sign Service Request", "type": "main", "index": 0}]]
+    },
+    "Sign Service Request": {
+      "main": [[{"node": "Load Campaign Context from NestJS", "type": "main", "index": 0}]]
+    },
+    "Load Campaign Context from NestJS": {
+      "main": [[{"node": "Confirm Orchestration", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "7b4a2e30-e107-4c83-b7ea-d01000000001",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

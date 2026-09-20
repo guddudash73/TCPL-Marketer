@@ -12,6 +12,7 @@ import {
 
 import type { AuthenticatedRequest } from "../auth/auth.types.js";
 import { Roles } from "../auth/roles.decorator.js";
+import { OrchestrationService } from "../orchestration/orchestration.service.js";
 import {
   campaignIdSchema,
   createCampaignSchema,
@@ -26,7 +27,17 @@ import { CampaignsService } from "./campaigns.service.js";
 export class CampaignsController {
   constructor(
     @Inject(CampaignsService) private readonly campaigns: CampaignsService,
+    @Inject(OrchestrationService)
+    private readonly orchestration: OrchestrationService,
   ) {}
+
+  @Post(":id/start")
+  start(
+    @Param("id", { schema: campaignIdSchema }) id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<unknown> {
+    return this.orchestration.startCampaign(id, request.user!.id);
+  }
 
   @Get()
   list(): Promise<unknown> {

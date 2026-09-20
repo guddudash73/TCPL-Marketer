@@ -32,7 +32,10 @@ services:
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-local-development-only-change-me}
+      N8N_SERVICE_SECRET: ${N8N_SERVICE_SECRET:-}
+      TCPL_API_URL: ${N8N_API_URL:-http://host.docker.internal:4000}
       GENERIC_TIMEZONE: Asia/Kolkata
       TZ: Asia/Kolkata
     ports:

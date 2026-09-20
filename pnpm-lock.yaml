@@ -191,6 +191,9 @@ importers:
       '@tcpl-marketer/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@tcpl-marketer/orchestration-contracts':
+        specifier: workspace:*
+        version: link:../../packages/orchestration-contracts
       nestjs-pino:
         specifier: 5.2.0
         version: 5.2.0(@nestjs/common@12.0.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.0.3)(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2)
@@ -325,7 +328,32 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
-  packages/orchestration-contracts: {}
+  packages/orchestration-contracts:
+    devDependencies:
+      '@eslint/js':
+        specifier: 9.39.1
+        version: 9.39.1
+      '@types/node':
+        specifier: 24.13.5
+        version: 24.13.5
+      '@typescript-eslint/eslint-plugin':
+        specifier: 8.70.0
+        version: 8.70.0(@typescript-eslint/parser@8.70.0(eslint@9.39.1(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3))(eslint@9.39.1(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3)
+      '@typescript-eslint/parser':
+        specifier: 8.70.0
+        version: 8.70.0(eslint@9.39.1(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3)
+      eslint:
+        specifier: 9.39.1
+        version: 9.39.1(jiti@2.7.0)(supports-color@7.2.0)
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      typescript-eslint:
+        specifier: 8.70.0
+        version: 8.70.0(eslint@9.39.1(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3)
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@24.13.5)(vite@7.3.6(@types/node@24.13.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13))
 
   packages/provider-contracts: {}
 

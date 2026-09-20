@@ -9,6 +9,7 @@ import { ConfigurationModule } from "./configuration/configuration.module.js";
 import { DatabaseModule } from "./database/database.module.js";
 import { HealthModule } from "./health/health.module.js";
 import { pinoHttpOptions } from "./logging/pino-http-options.js";
+import { OrchestrationModule } from "./orchestration/orchestration.module.js";
 import { UsersModule } from "./users/users.module.js";
 
 @Module({
@@ -19,6 +20,7 @@ import { UsersModule } from "./users/users.module.js";
     UsersModule,
     AuthModule,
     CampaignsModule,
+    OrchestrationModule,
     AdminModule,
     ConfigurationModule,
     HealthModule,
