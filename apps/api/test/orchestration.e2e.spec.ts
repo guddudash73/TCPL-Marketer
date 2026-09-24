@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
 import type { INestApplication } from "@nestjs/common";
 import { createPrismaClient } from "@tcpl-marketer/database";
@@ -7,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 import { PasswordHasher } from "../src/auth/password-hasher.js";
 import { createApp } from "../src/bootstrap.js";
+import { OpenAISearchAdapter } from "../src/search/openai-search.adapter.js";
 
 const managerEmail = "d010-manager@example.test";
 const password = "D010-Test-Password!2026";
@@ -19,6 +21,7 @@ describe("campaign orchestration", () => {
   let manager: TestAgent;
   let userId: string | undefined;
   const campaignIds: string[] = [];
+  const organizationIds: string[] = [];
   let campaignInput: Record<string, unknown>;
   const originalBaseUrl = process.env.N8N_BASE_URL;
   const originalServiceSecret = process.env.N8N_SERVICE_SECRET;
@@ -91,6 +94,11 @@ describe("campaign orchestration", () => {
     try {
       if (campaignIds.length > 0) {
         await database.campaign.deleteMany({ where: { id: { in: campaignIds } } });
+      }
+      if (organizationIds.length > 0) {
+        await database.organization.deleteMany({
+          where: { id: { in: organizationIds } },
+        });
       }
       if (userId) {
         await database.auditLog.deleteMany({ where: { actorUserId: userId } });
@@ -203,4 +211,131 @@ describe("campaign orchestration", () => {
       .expect(200);
     expect(response.body).toMatchObject({ id: campaignId, status: "RUNNING" });
   });
+
+  it("chains the n8n campaign workflow from context into discovery", async () => {
+    const workflow = JSON.parse(
+      await readFile(
+        new URL(
+          "../../../automation/n8n/workflows/campaign-start.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ) as {
+      nodes: Array<{
+        name: string;
+        parameters: { method?: string; url?: string; value?: string };
+      }>;
+      connections: Record<
+        string,
+        { main: Array<Array<{ node: string; type: string; index: number }>> }
+      >;
+    };
+
+    const discoveryRequest = workflow.nodes.find(
+      ({ name }) => name === "Prepare Campaign Discovery",
+    );
+    expect(discoveryRequest?.parameters).toMatchObject({
+      method: "POST",
+      url: "={{ $env.TCPL_API_URL + $json.discoveryPath }}",
+    });
+    expect(
+      workflow.connections["Load Campaign Context from NestJS"]?.main[0]?.[0]
+        ?.node,
+    ).toBe("Prepare Discovery Request");
+    expect(
+      workflow.connections["Prepare Campaign Discovery"]?.main[0]?.[0]?.node,
+    ).toBe("Confirm Orchestration");
+  });
+
+  it("persists discovery through the protected endpoint without duplicates", async () => {
+    const publish = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ executionId: "n8n-discovery-test" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", publish);
+
+    const created = await manager
+      .post("/campaigns")
+      .send({ ...campaignInput, name: "D012 Discovery Integration" })
+      .expect(201);
+    const campaignId = created.body.id as string;
+    campaignIds.push(campaignId);
+    await manager.post(`/campaigns/${campaignId}/start`).expect(201);
+
+    const adapter = app!.get(OpenAISearchAdapter);
+    vi.spyOn(adapter, "plan").mockResolvedValue({
+      data: {
+        strategies: [
+          {
+            type: "DIRECT_COMPANY",
+            queries: ["United States LiDAR surveying companies"],
+          },
+        ],
+      },
+      model: "test-search-model",
+      providerResponseId: "plan-response",
+      prompt: { name: "campaign-search-plan", version: "v1" },
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+    });
+    vi.spyOn(adapter, "search").mockResolvedValue({
+      data: [
+        {
+          organizationName: "Day Three Surveying Inc.",
+          organizationLocation: "Denver, Colorado, United States",
+          websiteUrl: "https://day-three-surveying.example/services",
+          sourceUrl: "https://evidence.example/day-three-surveying",
+          sourceTitle: "Day Three Surveying",
+          summary: "A surveying organization with LiDAR capability.",
+          evidenceSnippet: "Provides LiDAR surveying services.",
+          strategyType: "DIRECT_COMPANY",
+          query: "United States LiDAR surveying companies",
+        },
+        {
+          organizationName: "Day Three Mapping LLC",
+          organizationLocation: "Austin, Texas, United States",
+          websiteUrl: "https://day-three-mapping.example",
+          sourceUrl: "https://evidence.example/day-three-mapping",
+          sourceTitle: "Day Three Mapping",
+          summary: "A mapping organization with point-cloud services.",
+          evidenceSnippet: "Offers point-cloud processing.",
+          strategyType: "DIRECT_COMPANY",
+          query: "United States LiDAR surveying companies",
+        },
+      ],
+      model: "test-search-model",
+      providerResponseId: "discovery-response",
+      prompt: { name: "campaign-search-discovery", version: "v1" },
+      usage: { inputTokens: 20, outputTokens: 10, totalTokens: 30 },
+    });
+
+    const first = await signedDiscoveryRequest(app!, campaignId);
+    expect(first.body.persistence.organizationIds).toHaveLength(2);
+    expect(first.body.persistence.candidateIds).toHaveLength(2);
+    organizationIds.push(...first.body.persistence.organizationIds);
+
+    const repeated = await signedDiscoveryRequest(app!, campaignId);
+    expect(repeated.body.persistence).toEqual(first.body.persistence);
+    expect(await database.leadCandidate.count({ where: { campaignId } })).toBe(2);
+    expect(
+      await database.organization.count({
+        where: { id: { in: first.body.persistence.organizationIds } },
+      }),
+    ).toBe(2);
+  });
 });
+
+function signedDiscoveryRequest(app: INestApplication, campaignId: string) {
+  const path = `/internal/campaigns/${campaignId}/prepare-discovery`;
+  const timestamp = Date.now().toString();
+  const signature = createHmac("sha256", serviceSecret)
+    .update(`${timestamp}\nPOST\n${path}`)
+    .digest("hex");
+  return request(app.getHttpServer())
+    .post(path)
+    .set("x-service-timestamp", timestamp)
+    .set("x-service-signature", signature)
+    .expect(201);
+}

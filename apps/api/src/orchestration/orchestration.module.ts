@@ -5,8 +5,10 @@ import { InternalOrchestrationController } from "./internal-orchestration.contro
 import { N8nOrchestrationAdapter } from "./n8n-orchestration.adapter.js";
 import { OrchestrationService } from "./orchestration.service.js";
 import { ServiceAuthGuard } from "./service-auth.guard.js";
+import { SearchModule } from "../search/search.module.js";
 
 @Module({
+  imports: [SearchModule],
   controllers: [InternalOrchestrationController],
   providers: [
     N8nOrchestrationAdapter,

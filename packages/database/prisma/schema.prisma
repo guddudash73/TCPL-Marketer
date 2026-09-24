@@ -41,6 +41,16 @@ enum AutomationRunStatus {
   CANCELLED
 }
 
+enum LeadCandidateStatus {
+  DISCOVERED
+  VALIDATING
+  RESEARCHING
+  ANALYSING
+  SCORING
+  QUALIFIED
+  REJECTED
+}
+
 model User {
   id           String        @id @default(uuid()) @db.Uuid
   email        String        @unique @db.VarChar(320)
@@ -234,11 +244,54 @@ model Campaign {
   targets                CampaignTarget[]
   sequenceSteps          CampaignSequenceStep[]
   automationRuns         AutomationRun[]
+  leadCandidates         LeadCandidate[]
 
   @@index([status, createdAt])
   @@index([sectorId])
   @@index([createdByUserId])
   @@map("campaigns")
+}
+
+model Organization {
+  id                 String          @id @default(uuid()) @db.Uuid
+  name               String          @db.VarChar(240)
+  normalizedName     String          @map("normalized_name") @db.VarChar(240)
+  aliases            String[]        @default([])
+  domain             String?         @map("domain") @db.VarChar(255)
+  normalizedDomain   String?         @unique @map("normalized_domain") @db.VarChar(255)
+  websiteUrl         String?         @map("website_url") @db.VarChar(2048)
+  location           String          @db.VarChar(320)
+  normalizedLocation String          @map("normalized_location") @db.VarChar(320)
+  fallbackKey        String?         @unique @map("fallback_key") @db.VarChar(600)
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  leadCandidates     LeadCandidate[]
+
+  @@index([normalizedName, normalizedLocation])
+  @@map("organizations")
+}
+
+model LeadCandidate {
+  id                  String              @id @default(uuid()) @db.Uuid
+  campaignId          String              @map("campaign_id") @db.Uuid
+  organizationId      String              @map("organization_id") @db.Uuid
+  status              LeadCandidateStatus @default(DISCOVERED)
+  idempotencyKey      String              @unique @map("idempotency_key") @db.VarChar(255)
+  sourceUrl           String              @map("source_url") @db.VarChar(2048)
+  sourceTitle         String              @map("source_title") @db.VarChar(500)
+  summary             String              @db.Text
+  evidenceSnippet     String              @map("evidence_snippet") @db.Text
+  searchStrategyType  String              @map("search_strategy_type") @db.VarChar(64)
+  searchQuery         String              @map("search_query") @db.VarChar(500)
+  discoveredAt        DateTime            @default(now()) @map("discovered_at") @db.Timestamptz(6)
+  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  campaign            Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([campaignId, organizationId])
+  @@index([campaignId, status, discoveredAt])
+  @@index([organizationId])
+  @@map("lead_candidates")
 }
 
 model OutboxEvent {

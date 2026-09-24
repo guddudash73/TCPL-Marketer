@@ -52,7 +52,7 @@ export class N8nOrchestrationAdapter implements OrchestrationGateway {
             "content-type": "application/json",
           },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(10_000),
+          signal: AbortSignal.timeout(n8nRequestTimeoutMilliseconds()),
         },
       );
     } catch {
@@ -75,4 +75,14 @@ export class N8nOrchestrationAdapter implements OrchestrationGateway {
           : undefined,
     };
   }
+}
+
+function n8nRequestTimeoutMilliseconds(): number {
+  const configured = Number(process.env.N8N_REQUEST_TIMEOUT_MS ?? 120_000);
+  if (!Number.isInteger(configured) || configured < 1_000 || configured > 300_000) {
+    throw new ServiceUnavailableException(
+      "N8N_REQUEST_TIMEOUT_MS must be an integer between 1000 and 300000",
+    );
+  }
+  return configured;
 }
