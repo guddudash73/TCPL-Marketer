@@ -27,11 +27,13 @@
     "@tcpl-marketer/database": "workspace:*",
     "@tcpl-marketer/orchestration-contracts": "workspace:*",
     "@tcpl-marketer/provider-contracts": "workspace:*",
+    "fast-xml-parser": "5.7.0",
     "nestjs-pino": "5.2.0",
     "openai": "7.17.0",
     "pino": "10.3.1",
     "pino-http": "11.0.0",
     "reflect-metadata": "0.2.2",
+    "robots-parser": "3.0.1",
     "rxjs": "7.8.2",
     "zod": "4.6.5"
   },
