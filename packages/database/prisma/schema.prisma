@@ -51,6 +51,17 @@ enum LeadCandidateStatus {
   REJECTED
 }
 
+enum CrawlRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum CrawlAttemptStatus {
+  SUCCEEDED
+  FAILED
+}
+
 model User {
   id           String        @id @default(uuid()) @db.Uuid
   email        String        @unique @db.VarChar(320)
@@ -266,9 +277,43 @@ model Organization {
   createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
   leadCandidates     LeadCandidate[]
+  crawlRuns          CrawlRun[]
 
   @@index([normalizedName, normalizedLocation])
   @@map("organizations")
+}
+
+model CrawlRun {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  homepageUrl    String         @map("homepage_url") @db.VarChar(2048)
+  status         CrawlRunStatus @default(RUNNING)
+  error          String?        @db.VarChar(500)
+  startedAt      DateTime       @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt    DateTime?      @map("completed_at") @db.Timestamptz(6)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  attempts       CrawlAttempt[]
+
+  @@index([organizationId, startedAt])
+  @@map("crawl_runs")
+}
+
+model CrawlAttempt {
+  id           String             @id @default(uuid()) @db.Uuid
+  crawlRunId   String             @map("crawl_run_id") @db.Uuid
+  requestedUrl String             @map("requested_url") @db.VarChar(2048)
+  finalUrl     String?            @map("final_url") @db.VarChar(2048)
+  method       String             @db.VarChar(16)
+  status       CrawlAttemptStatus
+  httpStatus   Int?               @map("http_status")
+  title        String?            @db.VarChar(500)
+  textLength   Int?               @map("text_length")
+  error        String?            @db.VarChar(500)
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  crawlRun     CrawlRun           @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+
+  @@index([crawlRunId, createdAt])
+  @@map("crawl_attempts")
 }
 
 model LeadCandidate {

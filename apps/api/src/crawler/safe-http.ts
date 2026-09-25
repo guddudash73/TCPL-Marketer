@@ -97,6 +97,7 @@ export type SafePage = {
 export async function readPublicPage(
   value: string,
   resolver: DnsResolver = defaultResolver,
+  allowedContentTypes: readonly string[] = ["text/html", "text/plain", "application/xml", "text/xml", "application/xhtml+xml"],
 ): Promise<SafePage> {
   let next = value;
   const signal = AbortSignal.timeout(CRAWL_LIMITS.timeoutMs);
@@ -112,7 +113,7 @@ export async function readPublicPage(
       continue;
     }
     const contentType = response.headers["content-type"]?.split(";")[0]?.toLowerCase() ?? "";
-    if (!["text/html", "text/plain", "application/xml", "text/xml", "application/xhtml+xml"].includes(contentType)) {
+    if (!allowedContentTypes.includes(contentType)) {
       response.destroy();
       throw new Error("Crawler response content type is not allowed");
     }
@@ -159,7 +160,7 @@ function requestOnce(url: URL, address: Address, signal: AbortSignal): Promise<I
       agent: false,
       family: address.family,
       signal,
-      headers: { "accept-encoding": "identity" },
+      headers: { "accept-encoding": "identity", "user-agent": "TCPLMarketerBot/1.0" },
       lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
     }, resolve);
     request.on("error", reject);

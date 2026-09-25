@@ -16,7 +16,8 @@
     "test": "vitest run",
     "seed:admin": "pnpm --filter @tcpl-marketer/database build && tsx --env-file-if-exists=../../.env src/auth/seed-admin.ts",
     "search:live": "tsx --env-file-if-exists=../../.env src/search/search-live.ts",
-    "day3:live": "tsx --env-file-if-exists=../../.env src/search/day3-live.ts"
+    "day3:live": "tsx --env-file-if-exists=../../.env src/search/day3-live.ts",
+    "crawler:live": "tsx --env-file-if-exists=../../.env src/crawler/crawler-live.ts"
   },
   "dependencies": {
     "@nestjs/common": "12.0.3",
@@ -27,11 +28,13 @@
     "@tcpl-marketer/database": "workspace:*",
     "@tcpl-marketer/orchestration-contracts": "workspace:*",
     "@tcpl-marketer/provider-contracts": "workspace:*",
+    "cheerio": "1.2.0",
     "fast-xml-parser": "5.7.0",
     "nestjs-pino": "5.2.0",
     "openai": "7.17.0",
     "pino": "10.3.1",
     "pino-http": "11.0.0",
+    "playwright": "1.63.0",
     "reflect-metadata": "0.2.2",
     "robots-parser": "3.0.1",
     "rxjs": "7.8.2",
