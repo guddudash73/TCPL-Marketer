@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { createPrismaClient } from "@tcpl-marketer/database";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -58,7 +58,9 @@ describe("crawler end-to-end path", () => {
     expect(read).not.toHaveBeenCalledWith("http://127.0.0.1/");
     expect(render).toHaveBeenCalledExactlyOnceWith(`${origin}/team`);
     const persisted = await database.crawlRun.findUniqueOrThrow({
-      where: { id: result.runId }, include: { attempts: { orderBy: { createdAt: "asc" } } },
+      where: { id: result.runId }, include: {
+        attempts: { orderBy: { createdAt: "asc" }, include: { source: { include: { webDocument: true } } } },
+      },
     });
     expect(persisted.status).toBe("SUCCEEDED");
     expect(persisted.completedAt).not.toBeNull();
@@ -66,6 +68,21 @@ describe("crawler end-to-end path", () => {
     expect(persisted.attempts.map(({ status, method }) => [status, method])).toEqual([
       ["SUCCEEDED", "HTTP"], ["SUCCEEDED", "HTTP"], ["SUCCEEDED", "PLAYWRIGHT"],
     ]);
+    for (const [index, attempt] of persisted.attempts.entries()) {
+      const fetched = result.pages[index]!;
+      expect(attempt.source).toMatchObject({
+        organizationId, crawlRunId: result.runId, crawlAttemptId: attempt.id,
+        url: fetched.url, publisher: "example.com", sourceType: "COMPANY_WEBSITE",
+        authority: "FIRST_PARTY", title: fetched.title,
+      });
+      expect(attempt.source?.contentHash).toBe(createHash("sha256").update(fetched.text).digest("hex"));
+      expect(attempt.source?.webDocument).toMatchObject({
+        sourceId: attempt.source?.id, text: fetched.text,
+        fetchMethod: fetched.method, httpStatus: 200,
+      });
+    }
+    expect(new Set(persisted.attempts.map((attempt) => attempt.source?.id)).size).toBe(3);
+    expect(await database.source.count({ where: { organizationId } })).toBe(3);
   });
 
   it.each([

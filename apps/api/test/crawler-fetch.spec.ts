@@ -97,12 +97,17 @@ describe("crawl run persistence", () => {
         return { url, httpStatus: 200, method: "HTTP", title: "Example", text: "Useful content" };
       });
     expect(run.pages).toHaveLength(1);
-    const persisted = await database.crawlRun.findUniqueOrThrow({ where: { id: run.runId }, include: { attempts: true } });
+    const persisted = await database.crawlRun.findUniqueOrThrow({
+      where: { id: run.runId }, include: { attempts: { include: { source: { include: { webDocument: true } } } } },
+    });
     expect(persisted.status).toBe("SUCCEEDED");
     expect(persisted.completedAt).not.toBeNull();
     expect(persisted.attempts.map((attempt) => attempt.status).sort()).toEqual(["FAILED", "SUCCEEDED"]);
     expect(persisted.attempts.find((attempt) => attempt.status === "SUCCEEDED")?.textLength).toBe(14);
     expect(persisted.attempts.find((attempt) => attempt.status === "FAILED")?.method).toBe("PLAYWRIGHT");
+    expect(persisted.attempts.find((attempt) => attempt.status === "FAILED")?.source).toBeNull();
+    expect(persisted.attempts.find((attempt) => attempt.status === "SUCCEEDED")?.source?.webDocument?.text)
+      .toBe("Useful content");
   });
 
   it("records a planning failure as a failed run", async () => {

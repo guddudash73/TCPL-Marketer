@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -33,15 +35,25 @@ export class CrawlRunner {
             throw new Error("Crawler selected URL changed origin");
           }
           const result = await fetch(requestedUrl);
-          if (validatePublicUrl(result.url).origin !== new URL(homepageUrl).origin) {
+          const finalUrl = validatePublicUrl(result.url);
+          if (finalUrl.origin !== new URL(homepageUrl).origin) {
             throw new Error("Crawler fetched URL changed origin");
           }
-          pages.push(result);
           await this.database.client.crawlAttempt.create({ data: {
-            crawlRunId: run.id, requestedUrl, finalUrl: result.url,
+            crawlRunId: run.id, requestedUrl, finalUrl: finalUrl.toString(),
             method: result.method, status: "SUCCEEDED", httpStatus: result.httpStatus,
             title: result.title, textLength: result.text.length,
+            source: { create: {
+              organizationId, crawlRunId: run.id, url: finalUrl.toString(),
+              title: result.title || null, publisher: finalUrl.hostname,
+              sourceType: "COMPANY_WEBSITE", authority: "FIRST_PARTY",
+              contentHash: createHash("sha256").update(result.text, "utf8").digest("hex"),
+              webDocument: { create: {
+                text: result.text, fetchMethod: result.method, httpStatus: result.httpStatus,
+              } },
+            } },
           } });
+          pages.push(result);
         } catch (error) {
           failures++;
           await this.database.client.crawlAttempt.create({ data: {
