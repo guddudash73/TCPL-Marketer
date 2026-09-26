@@ -62,6 +62,12 @@ enum CrawlAttemptStatus {
   FAILED
 }
 
+enum ClaimExtractionRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
 model User {
   id           String        @id @default(uuid()) @db.Uuid
   email        String        @unique @db.VarChar(320)
@@ -279,6 +285,8 @@ model Organization {
   leadCandidates     LeadCandidate[]
   crawlRuns          CrawlRun[]
   sources            Source[]
+  claimExtractionRuns ClaimExtractionRun[]
+  claims              Claim[]
 
   @@index([normalizedName, normalizedLocation])
   @@map("organizations")
@@ -336,6 +344,7 @@ model Source {
   crawlRun       CrawlRun     @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
   crawlAttempt   CrawlAttempt @relation(fields: [crawlAttemptId], references: [id], onDelete: Cascade)
   webDocument    WebDocument?
+  claimEvidence  ClaimEvidence[]
 
   @@index([organizationId, capturedAt])
   @@index([crawlRunId])
@@ -353,6 +362,58 @@ model WebDocument {
   source      Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
   @@map("web_documents")
+}
+
+model ClaimExtractionRun {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  organizationId     String                   @map("organization_id") @db.Uuid
+  idempotencyKey     String                   @unique @map("idempotency_key") @db.Char(64)
+  documentSetHash    String                   @map("document_set_hash") @db.Char(64)
+  provider           String                   @db.VarChar(64)
+  model              String                   @db.VarChar(128)
+  promptName         String                   @map("prompt_name") @db.VarChar(128)
+  promptVersion      String                   @map("prompt_version") @db.VarChar(64)
+  status             ClaimExtractionRunStatus @default(RUNNING)
+  providerResponseId String?                  @map("provider_response_id") @db.VarChar(255)
+  inputTokens        Int?                     @map("input_tokens")
+  outputTokens       Int?                     @map("output_tokens")
+  totalTokens        Int?                     @map("total_tokens")
+  error              String?                  @db.VarChar(500)
+  startedAt          DateTime                 @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt        DateTime?                @map("completed_at") @db.Timestamptz(6)
+  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  claims             Claim[]
+
+  @@index([organizationId, status, startedAt])
+  @@map("claim_extraction_runs")
+}
+
+model Claim {
+  id              String             @id @default(uuid()) @db.Uuid
+  organizationId  String             @map("organization_id") @db.Uuid
+  extractionRunId String             @map("extraction_run_id") @db.Uuid
+  claimType       String             @map("claim_type") @db.VarChar(64)
+  statement       String             @db.Text
+  fingerprint     String             @db.Char(64)
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  extractionRun   ClaimExtractionRun @relation(fields: [extractionRunId], references: [id], onDelete: Cascade)
+  evidence        ClaimEvidence[]
+
+  @@unique([extractionRunId, fingerprint])
+  @@index([organizationId, claimType])
+  @@map("claims")
+}
+
+model ClaimEvidence {
+  claimId  String @map("claim_id") @db.Uuid
+  sourceId String @map("source_id") @db.Uuid
+  claim    Claim  @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  source   Source @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+
+  @@id([claimId, sourceId])
+  @@index([sourceId])
+  @@map("claim_evidence")
 }
 
 model LeadCandidate {

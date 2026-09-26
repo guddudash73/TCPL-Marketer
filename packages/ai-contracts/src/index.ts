@@ -35,3 +35,30 @@ export const SearchResultsSchema = z.object({
 export type SearchPlan = z.infer<typeof SearchPlanSchema>;
 export type SearchResult = z.infer<typeof SearchResultSchema>;
 export type SearchStrategyType = z.infer<typeof SearchStrategyTypeSchema>;
+
+export const ClaimTypeSchema = z.enum([
+  "COMPANY_FACT",
+  "CAPABILITY",
+  "PROJECT",
+  "CUSTOMER",
+  "CERTIFICATION",
+  "HIRING",
+  "FUNDING",
+  "EXPANSION",
+  "LEADERSHIP",
+  "PROCUREMENT",
+  "OTHER",
+]);
+
+export const ExtractedClaimSchema = z.object({
+  statement: z.string().trim().min(1).max(2_000),
+  type: ClaimTypeSchema,
+  evidenceIds: z.array(z.string().trim().min(1).max(100)).min(1).max(10),
+});
+
+export const ClaimExtractionSchema = z.object({
+  claims: z.array(ExtractedClaimSchema).max(50),
+});
+
+export type ClaimExtraction = z.infer<typeof ClaimExtractionSchema>;
+export type ExtractedClaim = z.infer<typeof ExtractedClaimSchema>;

@@ -14,7 +14,7 @@ interface ServiceRequest {
   originalUrl: string;
 }
 
-const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const MAX_CLOCK_SKEW_MS = 5 * 60 * 1_000;
 
 @Injectable()
 export class ServiceAuthGuard implements CanActivate {

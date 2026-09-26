@@ -3,10 +3,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { createPrismaClient } from "@tcpl-marketer/database";
 
 const database = createPrismaClient();
-const apiBaseUrl = (process.env.API_BASE_URL ?? "http://localhost:4000").replace(
-  /\/$/,
-  "",
-);
+const apiBaseUrl = (
+  process.env.API_BASE_URL ?? "http://localhost:4000"
+).replace(/\/$/, "");
 const sessionToken = randomBytes(32).toString("base64url");
 let sessionId: string | undefined;
 
@@ -18,7 +17,7 @@ try {
     },
   });
   if (!actor) {
-    throw new Error("Seed an ADMIN or MANAGER user before the Day 3 live check");
+    throw new Error("Seed an ADMIN or MANAGER user before the live check");
   }
 
   const configuration = await database.sector.findUnique({
@@ -119,10 +118,7 @@ try {
   await database.$disconnect();
 }
 
-async function apiRequest<T>(
-  path: string,
-  init: RequestInit,
-): Promise<T> {
+async function apiRequest<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
     headers: {

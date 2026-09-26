@@ -1,7 +1,38 @@
-import type { SearchPlan, SearchResult } from "@tcpl-marketer/ai-contracts";
+import type {
+  ClaimExtraction,
+  SearchPlan,
+  SearchResult,
+} from "@tcpl-marketer/ai-contracts";
 
+export const CLAIM_EXTRACTOR = Symbol("CLAIM_EXTRACTOR");
 export const SEARCH_PLANNER = Symbol("SEARCH_PLANNER");
 export const SEARCH_PROVIDER = Symbol("SEARCH_PROVIDER");
+
+export interface ClaimSourceDocument {
+  evidenceId: string;
+  url: string;
+  title: string | null;
+  text: string;
+}
+
+export interface ClaimExtractionRequest {
+  organizationId: string;
+  organizationName: string;
+  documents: ClaimSourceDocument[];
+}
+
+export interface ClaimExtractorConfiguration {
+  provider: string;
+  model: string;
+  prompt: { name: string; version: string };
+}
+
+export interface ClaimExtractor {
+  getConfiguration(): ClaimExtractorConfiguration;
+  extract(
+    input: ClaimExtractionRequest,
+  ): Promise<ProviderRun<ClaimExtraction>>;
+}
 
 export interface SearchCampaignContext {
   campaignId: string;

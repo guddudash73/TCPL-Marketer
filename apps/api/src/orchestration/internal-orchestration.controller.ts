@@ -2,9 +2,9 @@ import { Controller, Get, Inject, Param, Post, UseGuards } from "@nestjs/common"
 
 import { Public } from "../auth/public.decorator.js";
 import { campaignIdSchema } from "../campaigns/campaign.schemas.js";
+import { ServiceAuthGuard } from "../common/service-auth.guard.js";
 import { SearchService } from "../search/search.service.js";
 import { OrchestrationService } from "./orchestration.service.js";
-import { ServiceAuthGuard } from "./service-auth.guard.js";
 
 @Controller("internal/campaigns")
 @Public()

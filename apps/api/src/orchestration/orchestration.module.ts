@@ -4,7 +4,7 @@ import { ORCHESTRATION_GATEWAY } from "@tcpl-marketer/orchestration-contracts";
 import { InternalOrchestrationController } from "./internal-orchestration.controller.js";
 import { N8nOrchestrationAdapter } from "./n8n-orchestration.adapter.js";
 import { OrchestrationService } from "./orchestration.service.js";
-import { ServiceAuthGuard } from "./service-auth.guard.js";
+import { ServiceAuthGuard } from "../common/service-auth.guard.js";
 import { SearchModule } from "../search/search.module.js";
 
 @Module({

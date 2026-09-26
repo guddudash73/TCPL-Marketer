@@ -17,6 +17,7 @@
     "seed:admin": "pnpm --filter @tcpl-marketer/database build && tsx --env-file-if-exists=../../.env src/auth/seed-admin.ts",
     "search:live": "tsx --env-file-if-exists=../../.env src/search/search-live.ts",
     "day3:live": "tsx --env-file-if-exists=../../.env src/search/day3-live.ts",
+    "day4:evidence-live": "tsx --env-file-if-exists=../../.env src/company-intelligence/day4-evidence-live.ts",
     "crawler:live": "tsx --env-file-if-exists=../../.env src/crawler/crawler-live.ts"
   },
   "dependencies": {

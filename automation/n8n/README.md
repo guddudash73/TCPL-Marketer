@@ -1,4 +1,4 @@
-# n8n campaign-start workflow
+# n8n workflows
 
 `campaign-start.json` is the Day 3 orchestration workflow. It accepts a durable
 `CAMPAIGN_STARTED` event, signs internal requests, asks NestJS for the campaign
@@ -38,3 +38,25 @@ independent inspection.
 
 The outbound n8n call uses an HMAC-SHA256 signature over
 `<timestamp>\n<method>\n<path>`. NestJS rejects stale or invalid signatures.
+
+## Company research
+
+`company-research.json` is the Day 4 orchestration-only workflow. It accepts a
+lead-candidate ID, signs and invokes
+`POST /internal/lead-candidates/:id/research`, and returns the NestJS result
+with the n8n execution ID. OpenAI calls, schema/evidence validation, claim
+persistence, and the company-profile projection remain inside NestJS.
+
+Import and publish it with the same `TCPL NestJS Service` Header Auth
+credential used by `campaign-start.json`. With the API, PostgreSQL, and n8n
+running, execute the controlled acceptance check:
+
+```text
+pnpm --filter @tcpl-marketer/api day4:evidence-live
+```
+
+The command creates and retains a labeled one-company acceptance fixture,
+persists one public source through the safe crawler, invokes the published n8n
+workflow twice, and verifies one real OpenAI extraction run plus cached repeat
+behavior. Its output includes both n8n execution IDs, PostgreSQL counts, claim
+statements, and source URLs for manual comparison.

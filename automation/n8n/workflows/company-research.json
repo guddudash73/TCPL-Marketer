@@ -1,0 +1,129 @@
+{
+  "id": "D014dCompanyResearch",
+  "name": "TCPL Company Research",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "company-research",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "company-research-webhook",
+      "name": "Company Research Requested",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-480, 0],
+      "webhookId": "tcpl-company-research",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tcpl-nestjs-service",
+          "name": "TCPL NestJS Service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "research-timestamp",
+              "name": "researchTimestamp",
+              "value": "={{ Date.now().toString() }}",
+              "type": "string"
+            },
+            {
+              "id": "research-path",
+              "name": "researchPath",
+              "value": "={{ '/internal/lead-candidates/' + $json.body.candidateId + '/research' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "prepare-research-request",
+      "name": "Prepare Research Request",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-240, 0]
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.researchTimestamp + '\\nPOST\\n' + $json.researchPath }}",
+        "secret": "={{ $env.N8N_SERVICE_SECRET }}",
+        "encoding": "hex"
+      },
+      "id": "sign-research-request",
+      "name": "Sign Research Request",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TCPL_API_URL + $json.researchPath }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-service-timestamp",
+              "value": "={{ $json.researchTimestamp }}"
+            },
+            {
+              "name": "x-service-signature",
+              "value": "={{ $json.data }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "research-company",
+      "name": "Research Company in NestJS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { executionId: $execution.id, research: $json } }}",
+        "options": {}
+      },
+      "id": "confirm-research",
+      "name": "Confirm Research",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [480, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Company Research Requested": {
+      "main": [[{"node": "Prepare Research Request", "type": "main", "index": 0}]]
+    },
+    "Prepare Research Request": {
+      "main": [[{"node": "Sign Research Request", "type": "main", "index": 0}]]
+    },
+    "Sign Research Request": {
+      "main": [[{"node": "Research Company in NestJS", "type": "main", "index": 0}]]
+    },
+    "Research Company in NestJS": {
+      "main": [[{"node": "Confirm Research", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "7b4a2e30-e107-4c83-b7ea-d014d000001",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
