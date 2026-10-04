@@ -41,11 +41,12 @@ The outbound n8n call uses an HMAC-SHA256 signature over
 
 ## Company research
 
-`company-research.json` is the Day 4 orchestration-only workflow. It accepts a
-lead-candidate ID, signs and invokes
-`POST /internal/lead-candidates/:id/research`, and returns the NestJS result
-with the n8n execution ID. OpenAI calls, schema/evidence validation, claim
-persistence, and the company-profile projection remain inside NestJS.
+`company-research.json` is the controlled research-to-scoring orchestration
+workflow. It accepts a lead-candidate ID, signs and invokes
+`POST /internal/lead-candidates/:id/research`, then signs and invokes
+`POST /internal/lead-candidates/:id/score`. It returns both NestJS results with
+the n8n execution ID. OpenAI calls, schema/evidence validation, claims, scoring
+rules, candidate-state decisions, and persistence remain inside NestJS.
 
 Import and publish it with the same `TCPL NestJS Service` Header Auth
 credential used by `campaign-start.json`. With the API, PostgreSQL, and n8n
@@ -60,3 +61,15 @@ persists one public source through the safe crawler, invokes the published n8n
 workflow twice, and verifies one real OpenAI extraction run plus cached repeat
 behavior. Its output includes both n8n execution IDs, PostgreSQL counts, claim
 statements, and source URLs for manual comparison.
+
+For the D015 qualified-scoring acceptance gate, run:
+
+```text
+pnpm --filter @tcpl-marketer/api day5:scoring-live
+```
+
+This command crawls the retained Ascension Land Surveying discovery candidate,
+extracts source-backed claims with `company-claim-extraction:v2`, invokes the
+published research-to-scoring workflow twice, and retains one qualified score
+with its weight snapshot, components, reasons, evidence IDs, and source URLs.
+It fails unless the repeat returns the same cached extraction and score.

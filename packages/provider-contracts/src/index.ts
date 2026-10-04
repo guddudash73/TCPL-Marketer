@@ -3,8 +3,18 @@ import type {
   SearchPlan,
   SearchResult,
 } from "@tcpl-marketer/ai-contracts";
+import type {
+  PeopleSearchInput,
+  PersonCandidate,
+} from "@tcpl-marketer/validation";
+
+export type {
+  PeopleSearchInput,
+  PersonCandidate,
+} from "@tcpl-marketer/validation";
 
 export const CLAIM_EXTRACTOR = Symbol("CLAIM_EXTRACTOR");
+export const PEOPLE_PROVIDER = Symbol("PEOPLE_PROVIDER");
 export const SEARCH_PLANNER = Symbol("SEARCH_PLANNER");
 export const SEARCH_PROVIDER = Symbol("SEARCH_PROVIDER");
 
@@ -89,4 +99,27 @@ export interface SearchPlanner {
 
 export interface SearchProvider {
   search(input: SearchRequest): Promise<ProviderRun<SearchResult[]>>;
+}
+
+export interface PersonEnrichmentInput {
+  personId: string;
+  fullName: string;
+  organizationName: string;
+  organizationDomain: string | null;
+  providerPersonId: string | null;
+}
+
+export interface EnrichedPerson {
+  personId: string;
+  provider: string;
+  providerPersonId: string;
+  businessEmail: string | null;
+  matchConfidence: number | null;
+  providerResponseReference: string | null;
+  enrichedAt: string;
+}
+
+export interface PeopleProvider {
+  searchPeople(input: PeopleSearchInput): Promise<PersonCandidate[]>;
+  enrichPerson(input: PersonEnrichmentInput): Promise<EnrichedPerson | null>;
 }

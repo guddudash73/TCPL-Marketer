@@ -40,13 +40,25 @@ export const ClaimTypeSchema = z.enum([
   "COMPANY_FACT",
   "CAPABILITY",
   "PROJECT",
+  "PROJECT_AWARD",
   "CUSTOMER",
   "CERTIFICATION",
   "HIRING",
   "FUNDING",
   "EXPANSION",
   "LEADERSHIP",
+  "LEADERSHIP_CHANGE",
   "PROCUREMENT",
+  "RFP",
+  "RFQ",
+  "TENDER",
+  "VENDOR_SEARCH",
+  "SUBCONTRACTOR_SEARCH",
+  "TECHNOLOGY_TRANSFORMATION",
+  "NEW_PRODUCT",
+  "PARTNERSHIP",
+  "ACQUISITION",
+  "CAPACITY_CONSTRAINT",
   "OTHER",
 ]);
 
@@ -62,3 +74,4 @@ export const ClaimExtractionSchema = z.object({
 
 export type ClaimExtraction = z.infer<typeof ClaimExtractionSchema>;
 export type ExtractedClaim = z.infer<typeof ExtractedClaimSchema>;
+export type ClaimType = z.infer<typeof ClaimTypeSchema>;

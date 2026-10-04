@@ -214,8 +214,11 @@ export class ClaimExtractionService {
       select: { id: true, organizationId: true, status: true },
     });
     if (!candidate) throw new NotFoundException("Lead candidate not found");
-    if (candidate.status === "REJECTED") {
-      throw new ConflictException("Rejected lead candidates cannot be researched");
+    if (["QUALIFIED", "BDE_REVIEW", "REJECTED"].includes(candidate.status)) {
+      return {
+        candidate,
+        profile: await this.researchOrganization(candidate.organizationId),
+      };
     }
 
     await this.database.client.leadCandidate.updateMany({

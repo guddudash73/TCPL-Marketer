@@ -90,13 +90,14 @@ describe("structured claim extraction", () => {
     expect(run.data.claims[0]?.evidenceIds).toEqual([evidenceId]);
     expect(run.prompt).toEqual({
       name: "company-claim-extraction",
-      version: "v1",
+      version: "v2",
     });
     const providerInput = parse.mock.calls[0]?.[0] as {
       instructions: string;
       input: string;
     };
     expect(providerInput.instructions).toContain("untrusted data");
+    expect(providerInput.instructions).toContain("subcontractor search");
     expect(providerInput.instructions).not.toContain(injection);
     expect(providerInput.input).toContain("BEGIN_UNTRUSTED_COMPANY_DOCUMENTS");
     expect(providerInput.input).toContain(injection);

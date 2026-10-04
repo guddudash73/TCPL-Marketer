@@ -145,6 +145,32 @@ describe("company intelligence persistence and protected API", () => {
   });
 
   it("persists source-backed claims and returns the cached profile on retry", async () => {
+    const legacyRun = await database.claimExtractionRun.create({
+      data: {
+        organizationId,
+        idempotencyKey: createHash("sha256")
+          .update(`legacy-v1:${randomUUID()}`)
+          .digest("hex"),
+        documentSetHash: "0".repeat(64),
+        provider: "openai",
+        model: "test-research-model",
+        promptName: "company-claim-extraction",
+        promptVersion: "v1",
+        status: "SUCCEEDED",
+        completedAt: new Date(Date.now() - 1_000),
+        claims: {
+          create: {
+            organizationId,
+            claimType: "COMPANY_FACT",
+            statement: "Legacy v1 extraction must not satisfy the v2 contract.",
+            fingerprint: createHash("sha256")
+              .update(`legacy-v1-claim:${randomUUID()}`)
+              .digest("hex"),
+            evidence: { create: { sourceId } },
+          },
+        },
+      },
+    });
     const adapter = app!.get(OpenAIClaimExtractionAdapter);
     const extract = vi.spyOn(adapter, "extract").mockResolvedValue({
       data: {
@@ -159,7 +185,7 @@ describe("company intelligence persistence and protected API", () => {
       },
       model: "test-research-model",
       providerResponseId: "resp-d014c",
-      prompt: { name: "company-claim-extraction", version: "v1" },
+      prompt: { name: "company-claim-extraction", version: "v2" },
       usage: { inputTokens: 20, outputTokens: 10, totalTokens: 30 },
     });
 
@@ -176,9 +202,11 @@ describe("company intelligence persistence and protected API", () => {
     expect(first.body.profile.extraction).toMatchObject({
       provider: "openai",
       model: "test-research-model",
+      prompt: { name: "company-claim-extraction", version: "v2" },
       providerResponseId: "resp-d014c",
       cached: false,
     });
+    expect(first.body.profile.extraction.id).not.toBe(legacyRun.id);
     expect(first.body.profile.claims).toEqual([
       expect.objectContaining({
         type: "CAPABILITY",
@@ -203,9 +231,9 @@ describe("company intelligence persistence and protected API", () => {
     expect(profile.body.claims).toEqual(first.body.profile.claims);
     expect(
       await database.claimExtractionRun.count({ where: { organizationId } }),
-    ).toBe(1);
-    expect(await database.claim.count({ where: { organizationId } })).toBe(1);
-    expect(await database.claimEvidence.count({ where: { sourceId } })).toBe(1);
+    ).toBe(2);
+    expect(await database.claim.count({ where: { organizationId } })).toBe(2);
+    expect(await database.claimEvidence.count({ where: { sourceId } })).toBe(2);
   });
 
   it("records provider failure and safely retries the same document set", async () => {
@@ -259,7 +287,7 @@ describe("company intelligence persistence and protected API", () => {
         },
         model: "test-research-model",
         providerResponseId: "resp-d014c-retry",
-        prompt: { name: "company-claim-extraction", version: "v1" },
+        prompt: { name: "company-claim-extraction", version: "v2" },
         usage: null,
       });
 
@@ -279,7 +307,7 @@ describe("company intelligence persistence and protected API", () => {
     expect(extract).toHaveBeenCalledTimes(2);
     expect(
       await database.claimExtractionRun.count({ where: { organizationId } }),
-    ).toBe(2);
+    ).toBe(3);
   });
 
   it("prevents a stale worker from overwriting a recovered run", async () => {
@@ -377,7 +405,7 @@ function providerResult(providerResponseId: string, evidenceId: string) {
     },
     model: "test-research-model",
     providerResponseId,
-    prompt: { name: "company-claim-extraction", version: "v1" },
+    prompt: { name: "company-claim-extraction", version: "v2" },
     usage: null,
   };
 }

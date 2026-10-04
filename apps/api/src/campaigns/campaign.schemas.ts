@@ -1,3 +1,7 @@
+import {
+  DEFAULT_OPPORTUNITY_SCORE_WEIGHTS,
+  OpportunityScoreWeightsSchema,
+} from "@tcpl-marketer/validation";
 import { z } from "zod";
 
 const uuid = z.string().uuid();
@@ -40,6 +44,9 @@ const campaignFields = {
     .regex(/^[A-Z][A-Z0-9_]*$/),
   targetLeadCount: z.number().int().positive().max(10_000),
   minimumScore: z.number().int().min(0).max(100),
+  scoringWeights: OpportunityScoreWeightsSchema.default(
+    DEFAULT_OPPORTUNITY_SCORE_WEIGHTS,
+  ),
   automationMode: z.literal("MANUAL_REVIEW").default("MANUAL_REVIEW"),
   dailyEmailLimit: z.number().int().positive().max(10_000),
   sequence: z.array(sequenceStepSchema).min(1).max(20),

@@ -67,6 +67,7 @@ export class CampaignsService {
         maximumEmployees: input.maximumEmployees,
         targetLeadCount: input.targetLeadCount,
         minimumScore: input.minimumScore,
+        ...scoringWeightData(input.scoringWeights),
         dailyEmailLimit: input.dailyEmailLimit,
         capabilities: {
           create: input.capabilityIds.map((capabilityId) => ({ capabilityId })),
@@ -144,6 +145,9 @@ export class CampaignsService {
         maximumEmployees: input.maximumEmployees,
         targetLeadCount: input.targetLeadCount,
         minimumScore: input.minimumScore,
+        ...(input.scoringWeights
+          ? scoringWeightData(input.scoringWeights)
+          : undefined),
         dailyEmailLimit: input.dailyEmailLimit,
         capabilities: input.capabilityIds
           ? {
@@ -272,4 +276,17 @@ export class CampaignsService {
       );
     }
   }
+}
+
+function scoringWeightData(weights: CreateCampaignInput["scoringWeights"]) {
+  return {
+    sectorFitWeight: weights.sectorFit,
+    capabilityMatchWeight: weights.capabilityMatch,
+    targetClientFitWeight: weights.targetClientFit,
+    outsourcingWeight: weights.outsourcingProbability,
+    buyingIntentWeight: weights.buyingIntent,
+    businessMomentumWeight: weights.businessMomentum,
+    decisionMakerWeight: weights.decisionMakerQuality,
+    contactConfidenceWeight: weights.contactConfidence,
+  };
 }

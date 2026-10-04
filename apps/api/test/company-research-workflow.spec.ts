@@ -14,8 +14,8 @@ type Workflow = {
   >;
 };
 
-describe("D014d company research workflow", () => {
-  it("orchestrates the protected NestJS research endpoint without owning AI or persistence", async () => {
+describe("company research and scoring workflow", () => {
+  it("orchestrates protected NestJS research and scoring without owning business logic", async () => {
     const workflow = JSON.parse(
       await readFile(
         new URL(
@@ -31,6 +31,9 @@ describe("D014d company research workflow", () => {
       "Prepare Research Request",
       "Sign Research Request",
       "Research Company in NestJS",
+      "Prepare Scoring Request",
+      "Sign Scoring Request",
+      "Score Candidate in NestJS",
       "Confirm Research",
     ]);
 
@@ -42,6 +45,15 @@ describe("D014d company research workflow", () => {
     );
     const request = workflow.nodes.find(
       ({ name }) => name === "Research Company in NestJS",
+    );
+    const scoringPreparation = workflow.nodes.find(
+      ({ name }) => name === "Prepare Scoring Request",
+    );
+    const scoringSignature = workflow.nodes.find(
+      ({ name }) => name === "Sign Scoring Request",
+    );
+    const scoringRequest = workflow.nodes.find(
+      ({ name }) => name === "Score Candidate in NestJS",
     );
     expect(JSON.stringify(preparation?.parameters)).toContain(
       "/internal/lead-candidates/",
@@ -55,12 +67,28 @@ describe("D014d company research workflow", () => {
       method: "POST",
       url: "={{ $env.TCPL_API_URL + $json.researchPath }}",
     });
+    expect(JSON.stringify(scoringPreparation?.parameters)).toContain(
+      "/internal/lead-candidates/",
+    );
+    expect(JSON.stringify(scoringPreparation?.parameters)).toContain("/score");
+    expect(scoringSignature?.parameters).toMatchObject({
+      action: "hmac",
+      type: "SHA256",
+      secret: "={{ $env.N8N_SERVICE_SECRET }}",
+    });
+    expect(scoringRequest?.parameters).toMatchObject({
+      method: "POST",
+      url: "={{ $env.TCPL_API_URL + $json.scoringPath }}",
+    });
 
     expect(
       workflow.connections["Company Research Requested"]?.main[0]?.[0]?.node,
     ).toBe("Prepare Research Request");
     expect(
       workflow.connections["Research Company in NestJS"]?.main[0]?.[0]?.node,
+    ).toBe("Prepare Scoring Request");
+    expect(
+      workflow.connections["Score Candidate in NestJS"]?.main[0]?.[0]?.node,
     ).toBe("Confirm Research");
     expect(
       workflow.nodes.some(({ type }) =>

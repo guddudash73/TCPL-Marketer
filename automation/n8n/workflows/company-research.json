@@ -91,15 +91,81 @@
     },
     {
       "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "scoring-timestamp",
+              "name": "scoringTimestamp",
+              "value": "={{ Date.now().toString() }}",
+              "type": "string"
+            },
+            {
+              "id": "scoring-path",
+              "name": "scoringPath",
+              "value": "={{ '/internal/lead-candidates/' + $json.candidate.id + '/score' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "prepare-scoring-request",
+      "name": "Prepare Scoring Request",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.scoringTimestamp + '\\nPOST\\n' + $json.scoringPath }}",
+        "secret": "={{ $env.N8N_SERVICE_SECRET }}",
+        "encoding": "hex"
+      },
+      "id": "sign-scoring-request",
+      "name": "Sign Scoring Request",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TCPL_API_URL + $json.scoringPath }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-service-timestamp",
+              "value": "={{ $json.scoringTimestamp }}"
+            },
+            {
+              "name": "x-service-signature",
+              "value": "={{ $json.data }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "score-candidate",
+      "name": "Score Candidate in NestJS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 0]
+    },
+    {
+      "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { executionId: $execution.id, research: $json } }}",
+        "responseBody": "={{ { executionId: $execution.id, research: $('Research Company in NestJS').item.json, scoring: $json } }}",
         "options": {}
       },
       "id": "confirm-research",
       "name": "Confirm Research",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
-      "position": [480, 0]
+      "position": [1200, 0]
     }
   ],
   "pinData": {},
@@ -114,6 +180,15 @@
       "main": [[{"node": "Research Company in NestJS", "type": "main", "index": 0}]]
     },
     "Research Company in NestJS": {
+      "main": [[{"node": "Prepare Scoring Request", "type": "main", "index": 0}]]
+    },
+    "Prepare Scoring Request": {
+      "main": [[{"node": "Sign Scoring Request", "type": "main", "index": 0}]]
+    },
+    "Sign Scoring Request": {
+      "main": [[{"node": "Score Candidate in NestJS", "type": "main", "index": 0}]]
+    },
+    "Score Candidate in NestJS": {
       "main": [[{"node": "Confirm Research", "type": "main", "index": 0}]]
     }
   },

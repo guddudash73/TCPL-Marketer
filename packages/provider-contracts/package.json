@@ -10,15 +10,16 @@
     }
   },
   "scripts": {
-    "prebuild": "pnpm --filter @tcpl-marketer/ai-contracts build",
+    "prebuild": "pnpm --filter @tcpl-marketer/ai-contracts build && pnpm --filter @tcpl-marketer/validation build",
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src",
-    "pretypecheck": "pnpm --filter @tcpl-marketer/ai-contracts build",
+    "pretypecheck": "pnpm --filter @tcpl-marketer/ai-contracts build && pnpm --filter @tcpl-marketer/validation build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@tcpl-marketer/ai-contracts": "workspace:*"
+    "@tcpl-marketer/ai-contracts": "workspace:*",
+    "@tcpl-marketer/validation": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",

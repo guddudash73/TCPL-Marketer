@@ -12,6 +12,8 @@ import { DatabaseModule } from "./database/database.module.js";
 import { HealthModule } from "./health/health.module.js";
 import { pinoHttpOptions } from "./logging/pino-http-options.js";
 import { OrchestrationModule } from "./orchestration/orchestration.module.js";
+import { PeopleModule } from "./people/people.module.js";
+import { ScoringModule } from "./scoring/scoring.module.js";
 import { UsersModule } from "./users/users.module.js";
 
 @Module({
@@ -23,6 +25,8 @@ import { UsersModule } from "./users/users.module.js";
     AuthModule,
     CampaignsModule,
     CompanyIntelligenceModule,
+    ScoringModule,
+    PeopleModule,
     OrchestrationModule,
     AdminModule,
     ConfigurationModule,

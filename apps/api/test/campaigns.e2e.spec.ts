@@ -65,6 +65,16 @@ describe('campaign CRUD', () => {
       researchDepth: 'STANDARD',
       targetLeadCount: 100,
       minimumScore: 70,
+      scoringWeights: {
+        sectorFit: 10,
+        capabilityMatch: 25,
+        targetClientFit: 10,
+        outsourcingProbability: 15,
+        buyingIntent: 25,
+        businessMomentum: 5,
+        decisionMakerQuality: 5,
+        contactConfidence: 5,
+      },
       automationMode: 'MANUAL_REVIEW',
       dailyEmailLimit: 25,
       sequence: [
@@ -114,6 +124,16 @@ describe('campaign CRUD', () => {
       .post('/campaigns')
       .send({ ...campaignInput, minimumEmployees: 500, maximumEmployees: 10 })
       .expect(400);
+    await manager
+      .post('/campaigns')
+      .send({
+        ...campaignInput,
+        scoringWeights: {
+          ...(campaignInput.scoringWeights as Record<string, number>),
+          buyingIntent: 24,
+        },
+      })
+      .expect(400);
   });
 
   it('persists and updates a valid MANUAL_REVIEW draft', async () => {
@@ -125,6 +145,9 @@ describe('campaign CRUD', () => {
       automationMode: 'MANUAL_REVIEW',
       countries: ['United States'],
       minimumScore: 70,
+      sectorFitWeight: 10,
+      capabilityMatchWeight: 25,
+      buyingIntentWeight: 25,
     });
     expect(created.body.capabilities).toHaveLength(1);
     expect(created.body.deliverables).toHaveLength(1);
@@ -137,9 +160,24 @@ describe('campaign CRUD', () => {
 
     const updated = await manager
       .patch(`/campaigns/${campaignId}`)
-      .send({ minimumScore: 75, sequence: [{ stepNumber: 1, delayDays: 0 }] })
+      .send({
+        minimumScore: 75,
+        scoringWeights: {
+          sectorFit: 15,
+          capabilityMatch: 20,
+          targetClientFit: 15,
+          outsourcingProbability: 15,
+          buyingIntent: 20,
+          businessMomentum: 5,
+          decisionMakerQuality: 5,
+          contactConfidence: 5,
+        },
+        sequence: [{ stepNumber: 1, delayDays: 0 }],
+      })
       .expect(200);
     expect(updated.body.minimumScore).toBe(75);
+    expect(updated.body.sectorFitWeight).toBe(15);
+    expect(updated.body.capabilityMatchWeight).toBe(20);
     expect(updated.body.sequenceSteps).toHaveLength(1);
 
     await manager.patch(`/campaigns/${campaignId}`).send({ status: 'RUNNING' }).expect(400);

@@ -48,6 +48,7 @@ enum LeadCandidateStatus {
   ANALYSING
   SCORING
   QUALIFIED
+  BDE_REVIEW
   REJECTED
 }
 
@@ -66,6 +67,26 @@ enum ClaimExtractionRunStatus {
   RUNNING
   SUCCEEDED
   FAILED
+}
+
+enum LeadGrade {
+  A_PLUS_URGENT
+  A
+  B
+  C_REVIEW
+  REJECT
+}
+
+enum ScoringRecommendedAction {
+  URGENT_BDE_REVIEW
+  STANDARD_REVIEW
+  REJECT
+}
+
+enum PersonSourceType {
+  COMPANY_WEBSITE
+  PUBLIC_WEB
+  PROVIDER
 }
 
 model User {
@@ -251,6 +272,14 @@ model Campaign {
   maximumEmployees       Int?                   @map("maximum_employees")
   targetLeadCount        Int                    @map("target_lead_count")
   minimumScore           Int                    @map("minimum_score")
+  sectorFitWeight        Int                    @default(15) @map("sector_fit_weight")
+  capabilityMatchWeight  Int                    @default(20) @map("capability_match_weight")
+  targetClientFitWeight  Int                    @default(15) @map("target_client_fit_weight")
+  outsourcingWeight      Int                    @default(15) @map("outsourcing_weight")
+  buyingIntentWeight     Int                    @default(20) @map("buying_intent_weight")
+  businessMomentumWeight Int                    @default(5) @map("business_momentum_weight")
+  decisionMakerWeight    Int                    @default(5) @map("decision_maker_weight")
+  contactConfidenceWeight Int                   @default(5) @map("contact_confidence_weight")
   dailyEmailLimit        Int                    @map("daily_email_limit")
   createdAt              DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -287,6 +316,7 @@ model Organization {
   sources            Source[]
   claimExtractionRuns ClaimExtractionRun[]
   claims              Claim[]
+  people              Person[]
 
   @@index([normalizedName, normalizedLocation])
   @@map("organizations")
@@ -383,6 +413,7 @@ model ClaimExtractionRun {
   completedAt        DateTime?                @map("completed_at") @db.Timestamptz(6)
   organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   claims             Claim[]
+  leadScores         LeadScore[]
 
   @@index([organizationId, status, startedAt])
   @@map("claim_extraction_runs")
@@ -432,11 +463,82 @@ model LeadCandidate {
   updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
   campaign            Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  scores              LeadScore[]
 
   @@unique([campaignId, organizationId])
   @@index([campaignId, status, discoveredAt])
   @@index([organizationId])
   @@map("lead_candidates")
+}
+
+model LeadScore {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  leadCandidateId       String                   @map("lead_candidate_id") @db.Uuid
+  claimExtractionRunId  String                   @map("claim_extraction_run_id") @db.Uuid
+  idempotencyKey        String                   @unique @map("idempotency_key") @db.Char(64)
+  score                 Int
+  needScore             Int                      @map("need_score")
+  intentScore           Int                      @map("intent_score")
+  grade                 LeadGrade
+  qualified             Boolean
+  recommendedAction     ScoringRecommendedAction @map("recommended_action")
+  minimumScore          Int                      @map("minimum_score")
+  weights               Json
+  components            Json
+  reasons               String[]
+  evidenceIds           String[]                 @map("evidence_ids") @db.Uuid
+  highIntentOverride    Json                     @map("high_intent_override")
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  leadCandidate         LeadCandidate            @relation(fields: [leadCandidateId], references: [id], onDelete: Cascade)
+  claimExtractionRun    ClaimExtractionRun       @relation(fields: [claimExtractionRunId], references: [id], onDelete: Restrict)
+
+  @@index([leadCandidateId, createdAt])
+  @@index([claimExtractionRunId])
+  @@index([grade, qualified, createdAt])
+  @@map("lead_scores")
+}
+
+model Person {
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @map("organization_id") @db.Uuid
+  idempotencyKey   String           @unique @map("idempotency_key") @db.Char(64)
+  fullName         String           @map("full_name") @db.VarChar(240)
+  normalizedName   String           @map("normalized_name") @db.VarChar(240)
+  location         String?          @db.VarChar(320)
+  profileUrl       String?          @map("profile_url") @db.VarChar(2048)
+  sourceType       PersonSourceType @map("source_type")
+  sourceProvider   String           @map("source_provider") @db.VarChar(64)
+  sourcePersonId   String?          @map("source_person_id") @db.VarChar(255)
+  sourceUrl        String?          @map("source_url") @db.VarChar(2048)
+  confidence       Float
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roles            PersonRole[]
+
+  @@index([organizationId, normalizedName])
+  @@index([sourceProvider, sourcePersonId])
+  @@map("people")
+}
+
+model PersonRole {
+  id              String   @id @default(uuid()) @db.Uuid
+  personId        String   @map("person_id") @db.Uuid
+  idempotencyKey  String   @unique @map("idempotency_key") @db.Char(64)
+  title           String   @db.VarChar(240)
+  normalizedTitle String   @map("normalized_title") @db.VarChar(240)
+  seniority       String?  @db.VarChar(80)
+  departments     String[] @default([])
+  isCurrent       Boolean  @default(true) @map("is_current")
+  sourceUrl       String?  @map("source_url") @db.VarChar(2048)
+  confidence      Float
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  person          Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([personId, isCurrent])
+  @@index([normalizedTitle])
+  @@map("person_roles")
 }
 
 model OutboxEvent {
