@@ -10,8 +10,10 @@
     }
   },
   "scripts": {
+    "prebuild": "pnpm --filter @tcpl-marketer/ai-contracts build",
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src",
+    "pretypecheck": "pnpm --filter @tcpl-marketer/ai-contracts build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
