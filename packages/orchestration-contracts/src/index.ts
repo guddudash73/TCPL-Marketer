@@ -7,6 +7,8 @@ export interface OrchestrationEvent {
   aggregateId: string;
   payload: Record<string, unknown>;
   createdAt: string;
+  /** Trace identifier carried to n8n as a header so one run can be followed end to end. */
+  correlationId?: string | undefined;
 }
 
 export interface PublishResult {
@@ -30,4 +32,5 @@ export class UnroutableOrchestrationEventError extends Error {
   }
 }
 
+export * from "./service-auth.js";
 export * from "./stages.js";

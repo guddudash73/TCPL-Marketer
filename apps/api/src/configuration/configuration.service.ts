@@ -68,14 +68,11 @@ export class ConfigurationService {
         slug: input.slug ?? slugify(input.name),
         researchRules: jsonInput(input.researchRules),
       };
-      const sector = await this.database.client.sector.create({
+      const sector = await this.audit.withAudit(
+        (transaction) => transaction.sector.create({
         data,
-      });
-      await this.record(
-        "configuration.sector.created",
-        "sector",
-        sector.id,
-        actorUserId,
+      }),
+        (changed) => ({ action: "configuration.sector.created", resourceId: changed.id, actorUserId }),
       );
       return sector;
     });
@@ -92,15 +89,12 @@ export class ConfigurationService {
         ...input,
         researchRules: jsonInput(input.researchRules),
       };
-      const sector = await this.database.client.sector.update({
+      const sector = await this.audit.withAudit(
+        (transaction) => transaction.sector.update({
         where: { id },
         data,
-      });
-      await this.record(
-        "configuration.sector.updated",
-        "sector",
-        sector.id,
-        actorUserId,
+      }),
+        (changed) => ({ action: "configuration.sector.updated", resourceId: changed.id, actorUserId }),
       );
       return sector;
     });
@@ -108,13 +102,10 @@ export class ConfigurationService {
 
   async deleteSector(id: string, actorUserId: string) {
     await this.ensureSector(id);
-    const sector = await this.database.client.sector.delete({ where: { id } });
-    await this.record(
-      "configuration.sector.deleted",
-      "sector",
-      sector.id,
-      actorUserId,
-    );
+    const sector = await this.audit.withAudit(
+        (transaction) => transaction.sector.delete({ where: { id } }),
+        (changed) => ({ action: "configuration.sector.deleted", resourceId: changed.id, actorUserId }),
+      );
     return sector;
   }
 
@@ -154,15 +145,12 @@ export class ConfigurationService {
           searchGuidance: jsonInput(input.searchGuidance),
           researchGuidance: jsonInput(input.researchGuidance),
         };
-        const capability = await this.database.client.serviceCapability.create({
+        const capability = await this.audit.withAudit(
+        (transaction) => transaction.serviceCapability.create({
           data,
-        });
-        await this.record(
-          "configuration.capability.created",
-          "service_capability",
-          capability.id,
-          actorUserId,
-        );
+        }),
+        (changed) => ({ action: "configuration.capability.created", resourceId: changed.id, actorUserId }),
+      );
         return capability;
       },
     );
@@ -183,16 +171,13 @@ export class ConfigurationService {
           searchGuidance: jsonInput(input.searchGuidance),
           researchGuidance: jsonInput(input.researchGuidance),
         };
-        const capability = await this.database.client.serviceCapability.update({
+        const capability = await this.audit.withAudit(
+        (transaction) => transaction.serviceCapability.update({
           where: { id },
           data,
-        });
-        await this.record(
-          "configuration.capability.updated",
-          "service_capability",
-          capability.id,
-          actorUserId,
-        );
+        }),
+        (changed) => ({ action: "configuration.capability.updated", resourceId: changed.id, actorUserId }),
+      );
         return capability;
       },
     );
@@ -200,15 +185,12 @@ export class ConfigurationService {
 
   async deleteCapability(id: string, actorUserId: string) {
     await this.ensureCapability(id);
-    const capability = await this.database.client.serviceCapability.delete({
+    const capability = await this.audit.withAudit(
+        (transaction) => transaction.serviceCapability.delete({
       where: { id },
-    });
-    await this.record(
-      "configuration.capability.deleted",
-      "service_capability",
-      capability.id,
-      actorUserId,
-    );
+    }),
+        (changed) => ({ action: "configuration.capability.deleted", resourceId: changed.id, actorUserId }),
+      );
     return capability;
   }
 
@@ -233,15 +215,16 @@ export class ConfigurationService {
     return this.withUniqueConflict(
       "Deliverable slug already exists for this capability",
       async () => {
-        const deliverable =
-          await this.database.client.capabilityDeliverable.create({
-            data: { ...input, slug: input.slug ?? slugify(input.name) },
-          });
-        await this.record(
-          "configuration.deliverable.created",
-          "capability_deliverable",
-          deliverable.id,
-          actorUserId,
+        const deliverable = await this.audit.withAudit(
+          (transaction) =>
+            transaction.capabilityDeliverable.create({
+              data: { ...input, slug: input.slug ?? slugify(input.name) },
+            }),
+          (changed) => ({
+            action: "configuration.deliverable.created",
+            resourceId: changed.id,
+            actorUserId,
+          }),
         );
         return deliverable;
       },
@@ -258,16 +241,17 @@ export class ConfigurationService {
     return this.withUniqueConflict(
       "Deliverable slug already exists for this capability",
       async () => {
-        const deliverable =
-          await this.database.client.capabilityDeliverable.update({
-            where: { id },
-            data: input,
-          });
-        await this.record(
-          "configuration.deliverable.updated",
-          "capability_deliverable",
-          deliverable.id,
-          actorUserId,
+        const deliverable = await this.audit.withAudit(
+          (transaction) =>
+            transaction.capabilityDeliverable.update({
+              where: { id },
+              data: input,
+            }),
+          (changed) => ({
+            action: "configuration.deliverable.updated",
+            resourceId: changed.id,
+            actorUserId,
+          }),
         );
         return deliverable;
       },
@@ -276,15 +260,12 @@ export class ConfigurationService {
 
   async deleteDeliverable(id: string, actorUserId: string) {
     await this.ensureDeliverable(id);
-    const deliverable = await this.database.client.capabilityDeliverable.delete(
+    const deliverable = await this.audit.withAudit(
+        (transaction) => transaction.capabilityDeliverable.delete(
       { where: { id } },
-    );
-    await this.record(
-      "configuration.deliverable.deleted",
-      "capability_deliverable",
-      deliverable.id,
-      actorUserId,
-    );
+    ),
+        (changed) => ({ action: "configuration.deliverable.deleted", resourceId: changed.id, actorUserId }),
+      );
     return deliverable;
   }
 
@@ -316,15 +297,12 @@ export class ConfigurationService {
           slug: input.slug ?? slugify(input.name),
           companyCharacteristics: jsonInput(input.companyCharacteristics),
         };
-        const profile = await this.database.client.targetClientProfile.create({
+        const profile = await this.audit.withAudit(
+        (transaction) => transaction.targetClientProfile.create({
           data,
-        });
-        await this.record(
-          "configuration.target_profile.created",
-          "target_client_profile",
-          profile.id,
-          actorUserId,
-        );
+        }),
+        (changed) => ({ action: "configuration.target_profile.created", resourceId: changed.id, actorUserId }),
+      );
         return profile;
       },
     );
@@ -344,16 +322,13 @@ export class ConfigurationService {
           ...input,
           companyCharacteristics: jsonInput(input.companyCharacteristics),
         };
-        const profile = await this.database.client.targetClientProfile.update({
+        const profile = await this.audit.withAudit(
+        (transaction) => transaction.targetClientProfile.update({
           where: { id },
           data,
-        });
-        await this.record(
-          "configuration.target_profile.updated",
-          "target_client_profile",
-          profile.id,
-          actorUserId,
-        );
+        }),
+        (changed) => ({ action: "configuration.target_profile.updated", resourceId: changed.id, actorUserId }),
+      );
         return profile;
       },
     );
@@ -361,15 +336,12 @@ export class ConfigurationService {
 
   async deleteTargetProfile(id: string, actorUserId: string) {
     await this.ensureTargetProfile(id);
-    const profile = await this.database.client.targetClientProfile.delete({
+    const profile = await this.audit.withAudit(
+        (transaction) => transaction.targetClientProfile.delete({
       where: { id },
-    });
-    await this.record(
-      "configuration.target_profile.deleted",
-      "target_client_profile",
-      profile.id,
-      actorUserId,
-    );
+    }),
+        (changed) => ({ action: "configuration.target_profile.deleted", resourceId: changed.id, actorUserId }),
+      );
     return profile;
   }
 
@@ -396,15 +368,12 @@ export class ConfigurationService {
     return this.withUniqueConflict(
       "Decision-maker title already exists for this capability",
       async () => {
-        const profile = await this.database.client.decisionMakerProfile.create({
+        const profile = await this.audit.withAudit(
+        (transaction) => transaction.decisionMakerProfile.create({
           data: input,
-        });
-        await this.record(
-          "configuration.decision_maker.created",
-          "decision_maker_profile",
-          profile.id,
-          actorUserId,
-        );
+        }),
+        (changed) => ({ action: "configuration.decision_maker.created", resourceId: changed.id, actorUserId }),
+      );
         return profile;
       },
     );
@@ -420,16 +389,13 @@ export class ConfigurationService {
     return this.withUniqueConflict(
       "Decision-maker title already exists for this capability",
       async () => {
-        const profile = await this.database.client.decisionMakerProfile.update({
+        const profile = await this.audit.withAudit(
+        (transaction) => transaction.decisionMakerProfile.update({
           where: { id },
           data: input,
-        });
-        await this.record(
-          "configuration.decision_maker.updated",
-          "decision_maker_profile",
-          profile.id,
-          actorUserId,
-        );
+        }),
+        (changed) => ({ action: "configuration.decision_maker.updated", resourceId: changed.id, actorUserId }),
+      );
         return profile;
       },
     );
@@ -437,15 +403,12 @@ export class ConfigurationService {
 
   async deleteDecisionMaker(id: string, actorUserId: string) {
     await this.ensureDecisionMaker(id);
-    const profile = await this.database.client.decisionMakerProfile.delete({
+    const profile = await this.audit.withAudit(
+        (transaction) => transaction.decisionMakerProfile.delete({
       where: { id },
-    });
-    await this.record(
-      "configuration.decision_maker.deleted",
-      "decision_maker_profile",
-      profile.id,
-      actorUserId,
-    );
+    }),
+        (changed) => ({ action: "configuration.decision_maker.deleted", resourceId: changed.id, actorUserId }),
+      );
     return profile;
   }
 
@@ -519,15 +482,6 @@ export class ConfigurationService {
       if (hasPrismaCode(error, "P2002")) throw new ConflictException(message);
       throw error;
     }
-  }
-
-  private record(
-    action: string,
-    resourceType: string,
-    resourceId: string,
-    actorUserId: string,
-  ) {
-    return this.audit.record({ action, resourceType, resourceId, actorUserId });
   }
 }
 

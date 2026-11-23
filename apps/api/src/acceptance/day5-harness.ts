@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { PrismaClient } from "@tcpl-marketer/database";
+import { createN8nWebhookToken } from "@tcpl-marketer/orchestration-contracts";
 import { z } from "zod";
 
 import { diagnosticCandidateInclude, diagnosticSnapshotHash } from "./diagnostic-snapshot.js";
@@ -275,7 +276,7 @@ export async function runDay5Harness(
         response = await request(endpoint, {
           method: "POST",
           headers: {
-            authorization: `Bearer ${secret}`,
+            authorization: `Bearer ${createN8nWebhookToken(secret, { subject: "company-research" })}`,
             "content-type": "application/json",
           },
           body: JSON.stringify({

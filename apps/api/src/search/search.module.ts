@@ -5,6 +5,8 @@ import {
 } from "@tcpl-marketer/provider-contracts";
 import OpenAI from "openai";
 
+import { AuditModule } from "../audit/audit.module.js";
+
 import {
   OPENAI_CLIENT,
   OpenAISearchAdapter,
@@ -13,6 +15,7 @@ import { OrganizationResolutionService } from "./organization-resolution.service
 import { SearchService } from "./search.service.js";
 
 @Module({
+  imports: [AuditModule],
   providers: [
     SearchService,
     OrganizationResolutionService,

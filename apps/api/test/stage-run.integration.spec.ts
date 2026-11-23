@@ -9,6 +9,7 @@ import {
 } from "@tcpl-marketer/orchestration-contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { AuditService } from "../src/audit/audit.service.js";
 import type { DatabaseService } from "../src/database/database.service.js";
 import { PrismaCampaignStateReader } from "../src/orchestration/prisma-campaign-state-reader.js";
 import { StageRunService } from "../src/orchestration/stage-run.service.js";
@@ -18,6 +19,7 @@ const databaseService = { client: database } as unknown as DatabaseService;
 const service = new StageRunService(
   databaseService,
   new PrismaCampaignStateReader(databaseService),
+  new AuditService(databaseService),
 );
 
 describe("stage run persistence, leases and constraints (PostgreSQL)", () => {

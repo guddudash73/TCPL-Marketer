@@ -13,6 +13,9 @@ overrides:
   'effect@<=3.22.0': 3.22.1
   'minimatch@>=7.0.0 <11.0.1': 11.0.1
   '@prisma/config@7.10.0>deepmerge-ts': 8.0.2
+  # PH1-02a: @sentry/nextjs build-time bundler plugins (not used: no withSentryConfig) pull a vulnerable glob.
+  '@sentry/bundler-plugin-core>glob': 14.0.2
+  '@sentry/bundler-plugins>glob': 14.0.2
   'prisma@7.10.0>mysql2': 3.24.4
 audit:
   level: moderate
@@ -24,6 +27,8 @@ audit:
 allowBuilds:
   '@prisma/engines': true
   '@scarf/scarf': false
+  # Not needed: the Sentry CLI only uploads source maps, which is not configured.
+  '@sentry/cli': false
   esbuild: true
   prisma: true
   unrs-resolver: false

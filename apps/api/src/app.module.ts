@@ -6,6 +6,7 @@ import { AuditModule } from "./audit/audit.module.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { CampaignsModule } from "./campaigns/campaigns.module.js";
 import { CompanyIntelligenceModule } from "./company-intelligence/company-intelligence.module.js";
+import { ServiceAuthModule } from "./common/service-auth/service-auth.module.js";
 import { ConfigurationModule } from "./configuration/configuration.module.js";
 import { CrawlerModule } from "./crawler/crawler.module.js";
 import { DatabaseModule } from "./database/database.module.js";
@@ -21,6 +22,7 @@ import { UsersModule } from "./users/users.module.js";
     LoggerModule.forRoot({ pinoHttp: pinoHttpOptions }),
     DatabaseModule,
     AuditModule,
+    ServiceAuthModule,
     UsersModule,
     AuthModule,
     CampaignsModule,

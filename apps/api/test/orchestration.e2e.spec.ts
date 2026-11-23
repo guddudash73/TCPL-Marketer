@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import type { INestApplication } from "@nestjs/common";
@@ -9,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PasswordHasher } from "../src/auth/password-hasher.js";
 import { createApp } from "../src/bootstrap.js";
 import { OpenAISearchAdapter } from "../src/search/openai-search.adapter.js";
+import { serviceHeaders } from "./support/service-auth.js";
 
 const managerEmail = "d010-manager@example.test";
 const password = "D010-Test-Password!2026";
@@ -146,9 +146,9 @@ describe("campaign orchestration", () => {
     expect(publish.mock.calls[0]?.[0]).toBe(
       "http://n8n.test/webhook/campaign-start",
     );
-    expect(publish.mock.calls[0]?.[1]?.headers).toMatchObject({
-      authorization: `Bearer ${serviceSecret}`,
-    });
+    const sentHeaders = publish.mock.calls[0]?.[1]?.headers as Record<string, string>;
+    expect(sentHeaders.authorization).toMatch(/^Bearer eyJ[\w-]+\.[\w-]+\.[\w-]+$/);
+    expect(sentHeaders.authorization).not.toContain(serviceSecret);
 
     const repeated = await manager.post(`/campaigns/${campaignId}/start`).expect(201);
     expect(repeated.body.event.id).toBe(started.body.event.id);
@@ -200,14 +200,10 @@ describe("campaign orchestration", () => {
     const path = `/internal/campaigns/${campaignId}/context`;
     await request(app!.getHttpServer()).get(path).expect(401);
 
-    const timestamp = Date.now().toString();
-    const signature = createHmac("sha256", serviceSecret)
-      .update(`${timestamp}\nGET\n${path}`)
-      .digest("hex");
+    const headers = serviceHeaders("GET", path);
     const response = await request(app!.getHttpServer())
       .get(path)
-      .set("x-service-timestamp", timestamp)
-      .set("x-service-signature", signature)
+      .set(headers)
       .expect(200);
     expect(response.body).toMatchObject({ id: campaignId, status: "RUNNING" });
   });
@@ -329,13 +325,9 @@ describe("campaign orchestration", () => {
 
 function signedDiscoveryRequest(app: INestApplication, campaignId: string) {
   const path = `/internal/campaigns/${campaignId}/prepare-discovery`;
-  const timestamp = Date.now().toString();
-  const signature = createHmac("sha256", serviceSecret)
-    .update(`${timestamp}\nPOST\n${path}`)
-    .digest("hex");
+  const headers = serviceHeaders("POST", path);
   return request(app.getHttpServer())
     .post(path)
-    .set("x-service-timestamp", timestamp)
-    .set("x-service-signature", signature)
+    .set(headers)
     .expect(201);
 }

@@ -182,16 +182,26 @@ describe('campaign CRUD', () => {
 
     await manager.patch(`/campaigns/${campaignId}`).send({ status: 'RUNNING' }).expect(400);
 
-    const auditCount = await database.auditLog.count({
+    const auditRows = await database.auditLog.findMany({
       where: { actorUserId: testUserIds[0], action: { startsWith: 'campaign.' } },
+      orderBy: { createdAt: 'asc' },
     });
-    expect(auditCount).toBe(2);
+    expect(auditRows.map((row) => row.action)).toEqual(['campaign.created', 'campaign.updated']);
+    for (const row of auditRows) {
+      expect(row).toMatchObject({ resourceType: 'campaign', resourceId: campaignId, campaignId });
+    }
+    expect(auditRows[0]?.metadata).toEqual({ automationMode: 'MANUAL_REVIEW', status: 'DRAFT' });
   });
 
   it('deletes only through the authorized CRUD endpoint', async () => {
     expect(campaignId).toBeDefined();
     await manager.delete(`/campaigns/${campaignId}`).expect(200);
     await manager.get(`/campaigns/${campaignId}`).expect(404);
+    const deleted = await database.auditLog.findMany({
+      where: { actorUserId: testUserIds[0], action: 'campaign.deleted', resourceId: campaignId },
+    });
+    expect(deleted).toHaveLength(1);
+    expect(deleted[0]).toMatchObject({ resourceType: 'campaign', campaignId });
     campaignId = undefined;
   });
 });

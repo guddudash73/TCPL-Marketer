@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { INestApplication } from "@nestjs/common";
 import { createPrismaClient } from "@tcpl-marketer/database";
@@ -6,6 +6,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createApp } from "../src/bootstrap.js";
+import { serviceHeaders } from "./support/service-auth.js";
 
 const database = createPrismaClient();
 const serviceSecret = "f002-test-service-secret-with-sufficient-entropy";
@@ -827,26 +828,19 @@ describe("F002 company-fit evidence persistence and API", () => {
   });
 
   function signedPost(path: string, body: unknown) {
-    const timestamp = Date.now().toString();
-    const signature = createHmac("sha256", serviceSecret)
-      .update(`${timestamp}\nPOST\n${path}`)
-      .digest("hex");
+    const raw = JSON.stringify(body);
     return request(app!.getHttpServer())
       .post(path)
-      .set("x-service-timestamp", timestamp)
-      .set("x-service-signature", signature)
-      .send(body);
+      .set(serviceHeaders("POST", path, { body: raw }))
+      .set("content-type", "application/json")
+      .send(raw);
   }
 
   function signedGet(path: string) {
-    const timestamp = Date.now().toString();
-    const signature = createHmac("sha256", serviceSecret)
-      .update(`${timestamp}\nGET\n${path}`)
-      .digest("hex");
+    const headers = serviceHeaders("GET", path);
     return request(app!.getHttpServer())
       .get(path)
-      .set("x-service-timestamp", timestamp)
-      .set("x-service-signature", signature);
+      .set(headers);
   }
 });
 

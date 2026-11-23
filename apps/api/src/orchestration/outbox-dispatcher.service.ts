@@ -11,6 +11,9 @@ import {
   type PublishResult,
 } from "@tcpl-marketer/orchestration-contracts";
 
+import { AuditService } from "../audit/audit.service.js";
+import { runWithCorrelation, currentCorrelationId } from "../common/correlation/correlation-context.js";
+import { redactString } from "../common/redaction/redactor.js";
 import { DatabaseService } from "../database/database.service.js";
 import {
   computeRetryDelayMs,
@@ -30,6 +33,7 @@ export interface ClaimedEvent {
   attempts: number;
   createdAt: Date | string;
   leaseOwner: string;
+  correlationId: string | null;
 }
 
 export type DispatchOutcome =
@@ -60,7 +64,8 @@ const CLAIMED_COLUMNS = `
   payload,
   attempts,
   created_at AS "createdAt",
-  lease_owner AS "leaseOwner"`;
+  lease_owner AS "leaseOwner",
+  correlation_id AS "correlationId"`;
 
 /**
  * Publishes outbox events at least once; consumers are idempotent on the event.
@@ -78,6 +83,7 @@ export class OutboxDispatcherService {
     @Inject(CAMPAIGN_STATE_READER)
     private readonly campaignState: CampaignStateReader,
     @Inject(StageRunService) private readonly stageRuns: StageRunService,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   /** Dispatches one known event now, for example right after a user starts a campaign. */
@@ -210,7 +216,19 @@ export class OutboxDispatcherService {
     return rows[0];
   }
 
-  private async processClaimed(
+  private processClaimed(
+    event: ClaimedEvent,
+    config: OutboxDispatchConfig,
+  ): Promise<DispatchOutcome> {
+    // The event's own trace follows it through logs, audit rows and the n8n call, including on retries.
+    return runWithCorrelation(
+      event.correlationId ?? currentCorrelationId() ?? randomUUID(),
+      () => this.processClaimedInTrace(event, config),
+      { campaignId: campaignIdOf(event) },
+    );
+  }
+
+  private async processClaimedInTrace(
     event: ClaimedEvent,
     config: OutboxDispatchConfig,
   ): Promise<DispatchOutcome> {
@@ -294,18 +312,19 @@ export class OutboxDispatcherService {
                 select: { id: true },
               })
             : null;
-          await transaction.auditLog.create({
-            data: {
+          await this.audit.record(
+            {
               action: "campaign.started",
-              resourceType: "campaign",
               resourceId: event.aggregateId,
+              campaignId: event.aggregateId,
               actorUserId: actor?.id ?? null,
               metadata: {
                 outboxEventId: event.id,
                 automationRunId: automationRun?.id ?? null,
               },
             },
-          });
+            transaction,
+          );
         }
       }
       return { kind: "PUBLISHED", eventId: event.id } as const;
@@ -400,11 +419,11 @@ export class OutboxDispatcherService {
           data: { status: "FAILED" },
         });
       }
-      await transaction.auditLog.create({
-        data: {
+      await this.audit.record(
+        {
           action: "orchestration.event_dead_lettered",
-          resourceType: "outbox_event",
           resourceId: event.id,
+          campaignId: campaignIdOf(event),
           metadata: {
             eventType: event.eventType,
             aggregateId: event.aggregateId,
@@ -412,7 +431,8 @@ export class OutboxDispatcherService {
             reason,
           },
         },
-      });
+        transaction,
+      );
       return { kind: "DEAD_LETTERED", eventId: event.id, reason } as const;
     });
   }
@@ -452,16 +472,20 @@ export class OutboxDispatcherService {
         );
         continue;
       }
-      await this.database.client.outboxEvent.updateMany({
-        where: { id: event.id, status: "PROCESSING", leaseOwner: recoveryOwner },
-        data: {
-          status: "PENDING",
-          availableAt: new Date(),
-          lastError: "Dispatch lease expired before the publish was recorded",
-          leaseOwner: null,
-          leaseExpiresAt: null,
-        },
-      });
+      // Due times use the database clock, so a host clock running ahead cannot delay recovery.
+      await this.database.client.$executeRawUnsafe(
+        `UPDATE outbox_events
+            SET status = 'PENDING'::"OutboxEventStatus",
+                available_at = now(),
+                last_error = 'Dispatch lease expired before the publish was recorded',
+                lease_owner = NULL,
+                lease_expires_at = NULL
+          WHERE id = $1::uuid
+            AND status = 'PROCESSING'::"OutboxEventStatus"
+            AND lease_owner = $2`,
+        event.id,
+        recoveryOwner,
+      );
     }
     return rows.length;
   }
@@ -500,12 +524,13 @@ function toOrchestrationEvent(event: ClaimedEvent): OrchestrationEvent {
     aggregateId: event.aggregateId,
     payload: payloadOf(event),
     createdAt: new Date(event.createdAt).toISOString(),
+    correlationId: event.correlationId ?? currentCorrelationId(),
   };
 }
 
 function safeErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
-    return error.message.slice(0, 2_000);
+    return redactString(error.message).slice(0, 2_000);
   }
   return "Unknown orchestration error";
 }

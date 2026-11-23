@@ -13,6 +13,7 @@ import { z } from "zod";
 import { Public } from "../auth/public.decorator.js";
 import { Roles } from "../auth/roles.decorator.js";
 import { ServiceAuthGuard } from "../common/service-auth.guard.js";
+import { RequiresServiceScope } from "../common/service-auth/service-scope.decorator.js";
 import {
   OutboxDispatcherService,
   type DispatchTickResult,
@@ -39,6 +40,7 @@ export class InternalOutboxDispatchController {
   ) {}
 
   @Post("dispatch")
+  @RequiresServiceScope("orchestration.dispatch")
   @HttpCode(200)
   dispatch(): Promise<DispatchTickResult> {
     return this.dispatcher.tick();

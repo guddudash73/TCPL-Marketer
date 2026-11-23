@@ -7,6 +7,10 @@ import {
 } from "@nestjs/common";
 import { Logger } from "nestjs-pino";
 
+import { reportError } from "../observability/error-reporting.js";
+import { currentCorrelationId } from "./correlation/correlation-context.js";
+import { redact, redactString } from "./redaction/redactor.js";
+
 interface RequestWithId {
   id?: string;
   method: string;
@@ -33,12 +37,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const exceptionResponse = isHttpException
       ? exception.getResponse()
       : undefined;
-    const message = getMessage(exceptionResponse, isHttpException);
+    const correlationId = currentCorrelationId() ?? request.id;
+    const message = sanitizeMessage(getMessage(exceptionResponse, isHttpException));
 
     this.logger.error(
       {
-        err: exception,
-        correlationId: request.id,
+        err: redact(exception),
+        correlationId,
         method: request.method,
         path: request.url,
         status,
@@ -46,11 +51,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
       "Request failed",
     );
 
+    if (status >= 500) reportError(exception, { correlationId });
+
     response.status(status).json({
       statusCode: status,
       error: isHttpException ? "HTTP_ERROR" : "INTERNAL_SERVER_ERROR",
       message,
-      correlationId: request.id,
+      correlationId,
     });
   }
 }
@@ -71,4 +78,11 @@ function getMessage(
   }
 
   return isHttpException ? "Request failed" : "An unexpected error occurred";
+}
+
+/** Client-facing messages may echo provider text, so they pass through the redactor too. */
+function sanitizeMessage(message: string | string[]): string | string[] {
+  return Array.isArray(message)
+    ? message.map((item) => (typeof item === "string" ? redactString(item) : item))
+    : redactString(message);
 }

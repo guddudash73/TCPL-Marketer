@@ -46,7 +46,6 @@ export class AuthService {
     if (!user || !passwordMatches || user.status !== "ACTIVE") {
       await this.audit.record({
         action: "auth.login.failed",
-        resourceType: "user",
         resourceId: normalizedEmail,
         metadata: requestMetadata(context),
       });
@@ -67,7 +66,6 @@ export class AuthService {
     await this.audit.record({
       action: "auth.login.succeeded",
       actorUserId: user.id,
-      resourceType: "user",
       resourceId: user.id,
       metadata: requestMetadata(context),
     });
@@ -103,7 +101,6 @@ export class AuthService {
     await this.audit.record({
       action: "auth.logout",
       actorUserId: principal.id,
-      resourceType: "user",
       resourceId: principal.id,
       metadata: requestMetadata(context),
     });
@@ -127,8 +124,8 @@ function requestMetadata(
 ): Record<string, string> | undefined {
   const metadata = Object.fromEntries(
     Object.entries({
-      ipAddress: context.ipAddress,
-      userAgent: context.userAgent,
+      ipAddress: context.ipAddress?.slice(0, 64),
+      userAgent: context.userAgent?.slice(0, 300),
     }).filter(
       (entry): entry is [string, string] =>
         typeof entry[1] === "string" && entry[1].length > 0,

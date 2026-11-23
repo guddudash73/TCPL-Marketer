@@ -13,6 +13,7 @@ import {
   type SearchProvider,
 } from "@tcpl-marketer/provider-contracts";
 
+import { ProviderCallAuditor } from "../audit/provider-call-auditor.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { OrganizationResolutionService } from "./organization-resolution.service.js";
 
@@ -24,6 +25,7 @@ export class SearchService {
     @Inject(SEARCH_PROVIDER) private readonly provider: SearchProvider,
     @Inject(OrganizationResolutionService)
     private readonly organizationResolution: OrganizationResolutionService,
+    @Inject(ProviderCallAuditor) private readonly providerCalls: ProviderCallAuditor,
   ) {}
 
   async prepareDiscovery(campaignId: string): Promise<unknown> {
@@ -85,12 +87,19 @@ export class SearchService {
       targetLeadCount: campaign.targetLeadCount,
     };
 
-    const planning = await this.planner.plan(context);
-    const discovery = await this.provider.search({
-      context,
-      plan: planning.data,
-      maximumResults: Math.min(campaign.targetLeadCount, 10),
-    });
+    const planning = await this.providerCalls.run(
+      { provider: "openai", operation: "search-plan", campaignId },
+      () => this.planner.plan(context),
+    );
+    const discovery = await this.providerCalls.run(
+      { provider: "openai", operation: "web-search", campaignId },
+      () =>
+        this.provider.search({
+          context,
+          plan: planning.data,
+          maximumResults: Math.min(campaign.targetLeadCount, 10),
+        }),
+    );
     const persistence = await this.organizationResolution.persistDiscovery(
       campaignId,
       context.geography,

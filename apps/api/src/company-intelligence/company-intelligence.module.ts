@@ -2,7 +2,6 @@ import { Module } from "@nestjs/common";
 import { CLAIM_EXTRACTOR } from "@tcpl-marketer/provider-contracts";
 import OpenAI from "openai";
 
-import { ServiceAuthGuard } from "../common/service-auth.guard.js";
 import { ClaimExtractionService } from "./claim-extraction.service.js";
 import { CompanyFitEvidenceService } from "./company-fit-evidence.service.js";
 import { InternalCompanyIntelligenceController } from "./internal-company-intelligence.controller.js";
@@ -17,7 +16,6 @@ import {
     ClaimExtractionService,
     CompanyFitEvidenceService,
     OpenAIClaimExtractionAdapter,
-    ServiceAuthGuard,
     {
       provide: OPENAI_CLAIM_CLIENT,
       useFactory: () =>

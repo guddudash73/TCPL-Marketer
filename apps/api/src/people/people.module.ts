@@ -1,7 +1,6 @@
 import { Module } from "@nestjs/common";
 import OpenAI from "openai";
 
-import { ServiceAuthGuard } from "../common/service-auth.guard.js";
 import {
   APOLLO_FETCH,
   ApolloPeopleSearchAdapter,
@@ -21,7 +20,6 @@ import {
     PeoplePersistenceService,
     DecisionMakerAssignmentService,
     PeopleSelectionWorkflowService,
-    ServiceAuthGuard,
     ApolloPeopleSearchAdapter,
     PublicPeopleSearchAdapter,
     { provide: APOLLO_FETCH, useFactory: () => globalThis.fetch },

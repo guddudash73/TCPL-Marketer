@@ -75,7 +75,7 @@ describe("company research, scoring and people-selection workflow", () => {
     expect(signature?.parameters).toMatchObject({
       action: "hmac",
       type: "SHA256",
-      secret: "={{ $env.N8N_SERVICE_SECRET }}",
+      secret: "={{ $env.SERVICE_SECRET_N8N_COMPANY_RESEARCH }}",
     });
     expect(request?.parameters).toMatchObject({
       method: "POST",
@@ -94,7 +94,7 @@ describe("company research, scoring and people-selection workflow", () => {
     expect(scoringSignature?.parameters).toMatchObject({
       action: "hmac",
       type: "SHA256",
-      secret: "={{ $env.N8N_SERVICE_SECRET }}",
+      secret: "={{ $env.SERVICE_SECRET_N8N_COMPANY_RESEARCH }}",
     });
     expect(scoringRequest?.parameters).toMatchObject({
       method: "POST",
@@ -112,8 +112,7 @@ describe("company research, scoring and people-selection workflow", () => {
     expect(peopleSignature?.parameters).toMatchObject({
       action: "hmac",
       type: "SHA256",
-      value: "={{ $json.peopleTimestamp + '\\nPOST\\n' + $json.peoplePath }}",
-      secret: "={{ $env.N8N_SERVICE_SECRET }}",
+      secret: "={{ $env.SERVICE_SECRET_N8N_COMPANY_RESEARCH }}",
     });
     expect(peopleRequest?.parameters).toMatchObject({
       method: "POST",

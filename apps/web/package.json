@@ -8,9 +8,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@sentry/nextjs": "10.75.2",
     "@tcpl-marketer/ui": "workspace:*",
     "next": "16.4.6",
     "react": "19.3.0",
@@ -25,6 +27,7 @@
     "eslint-config-next": "16.4.6",
     "postcss": "8.5.28",
     "tailwindcss": "4.3.3",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vitest": "4.1.12"
   }
 }

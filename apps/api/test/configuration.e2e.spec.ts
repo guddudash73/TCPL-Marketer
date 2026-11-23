@@ -152,6 +152,13 @@ describe('business configuration CRUD', () => {
       })
       .expect(400);
 
+    const createdIds = {
+      sector: sector.body.id as string,
+      capability: capability.body.id as string,
+      deliverable: deliverable.body.id as string,
+      target_profile: target.body.id as string,
+      decision_maker: decisionMaker.body.id as string,
+    };
     await admin.delete(`/decision-maker-profiles/${decisionMaker.body.id}`).expect(200);
     await admin.delete(`/target-client-profiles/${target.body.id}`).expect(200);
     await admin.delete(`/deliverables/${deliverable.body.id}`).expect(200);
@@ -159,9 +166,29 @@ describe('business configuration CRUD', () => {
     await admin.delete(`/sectors/${testSectorId}`).expect(200);
     testSectorId = undefined;
 
-    const auditCount = await database.auditLog.count({
+    // Every create, update and delete wrote exactly one audit row for the right resource and actor.
+    const resourceTypes = {
+      sector: 'sector',
+      capability: 'service_capability',
+      deliverable: 'capability_deliverable',
+      target_profile: 'target_client_profile',
+      decision_maker: 'decision_maker_profile',
+    } as const;
+    const rows = await database.auditLog.findMany({
       where: { actorUserId: testUserIds[0], action: { startsWith: 'configuration.' } },
     });
-    expect(auditCount).toBeGreaterThanOrEqual(15);
+    expect(rows).toHaveLength(15);
+    for (const [entity, id] of Object.entries(createdIds)) {
+      for (const verb of ['created', 'updated', 'deleted']) {
+        const matching = rows.filter((row) => row.action === `configuration.${entity}.${verb}`);
+        expect(matching, `${entity} ${verb}`).toHaveLength(1);
+        expect(matching[0]).toMatchObject({
+          resourceType: resourceTypes[entity as keyof typeof resourceTypes],
+          resourceId: id,
+          actorUserId: testUserIds[0],
+        });
+        expect(matching[0]?.correlationId).toMatch(/^[0-9a-f-]{36}$/);
+      }
+    }
   });
 });

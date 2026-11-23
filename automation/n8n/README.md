@@ -16,11 +16,13 @@ not read PostgreSQL or implement campaign rules.
 
 Local setup:
 
-1. Set strong, matching `N8N_SERVICE_SECRET` and `N8N_ENCRYPTION_KEY` values in
-   the local `.env` file. Do not commit either value.
-2. Start the API and n8n, then create an n8n Header Auth credential named
-   `TCPL NestJS Service` with header `Authorization` and value
-   `Bearer <N8N_SERVICE_SECRET>`.
+1. Set strong `N8N_SERVICE_SECRET`, `N8N_ENCRYPTION_KEY` and `SERVICE_SECRET_*`
+   values in the local `.env` file. Do not commit them. Recreate the n8n container
+   after changing them so it receives the new environment.
+2. Start the API and n8n, then create an n8n JWT Auth credential named
+   `TCPL NestJS Webhook JWT` with key type Passphrase, algorithm HS256 and
+   `N8N_SERVICE_SECRET` as the secret. Do not use Header Auth: n8n saves incoming
+   headers in its execution history, so a reusable password would be stored there.
 3. Inspect whether the campaign-start workflow already exists. Update it in
    place when present; import `workflows/campaign-start.json` only when absent.
    Preserve/attach the matching credential and publish the intended version.
@@ -45,8 +47,11 @@ through n8n, verifies that several candidates were persisted, removes only its
 temporary session, and prints the retained campaign and organization IDs for
 independent inspection.
 
-The outbound n8n call uses an HMAC-SHA256 signature over
-`<timestamp>\n<method>\n<path>`. NestJS rejects stale or invalid signatures.
+Every n8n call to NestJS is signed with that workflow's own `SERVICE_SECRET_N8N_*` key. The signature covers the caller, time, a unique request ID, method, path, body hash and the F001 headers, and NestJS rejects stale, tampered, replayed or out-of-scope requests. `N8N_SERVICE_SECRET` is only the key NestJS uses to sign a 60-second webhook token; the key itself is never sent. Do not enable retry-on-fail on a signed HTTP Request node, because it would resend the same request ID. See `docs/architecture/service-authentication.md`.
+
+## Correlation ID
+
+NestJS sends `x-correlation-id` with every orchestration call. The `campaign-start` and `company-research` workflows copy that header from the incoming webhook onto every HTTP Request node that calls NestJS, so logs, stage runs and audit rows written by those calls carry the same ID (see `docs/architecture/audit-and-redaction.md`). Their webhook replies send the same header back, and the `outbox-dispatch` tick generates its own. If a workflow is updated in n8n, keep the `x-correlation-id` header on each NestJS call and on each reply.
 
 ## Outbox dispatch tick
 

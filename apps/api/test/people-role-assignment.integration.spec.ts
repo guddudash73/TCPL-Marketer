@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { INestApplication } from "@nestjs/common";
 import { createPrismaClient } from "@tcpl-marketer/database";
@@ -6,6 +6,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createApp } from "../src/bootstrap.js";
+import { serviceHeaders } from "./support/service-auth.js";
 
 const database = createPrismaClient();
 const serviceSecret = "d016-test-service-secret-with-sufficient-entropy";
@@ -298,15 +299,11 @@ describe("decision-maker role assignment persistence", () => {
 
   function signedRequest(method: "GET" | "POST") {
     const path = `/internal/lead-candidates/${leadCandidateId}/decision-makers`;
-    const timestamp = Date.now().toString();
-    const signature = createHmac("sha256", serviceSecret)
-      .update(`${timestamp}\n${method}\n${path}`)
-      .digest("hex");
+    const headers = serviceHeaders(method, path);
     const agent = request(app!.getHttpServer());
     const pending = method === "GET" ? agent.get(path) : agent.post(path);
     return pending
-      .set("x-service-timestamp", timestamp)
-      .set("x-service-signature", signature);
+      .set(headers);
   }
 });
 

@@ -5,11 +5,14 @@ import {
 } from "@nestjs/common";
 import {
   UnroutableOrchestrationEventError,
+  createN8nWebhookToken,
   type OrchestrationEvent,
   type OrchestrationEventType,
   type OrchestrationGateway,
   type PublishResult,
 } from "@tcpl-marketer/orchestration-contracts";
+
+import { CORRELATION_HEADER } from "../common/correlation/correlation-context.js";
 
 /** Each event type needs an explicit webhook; later stages add theirs in their own tasks. */
 const EVENT_WEBHOOKS: Partial<Record<OrchestrationEventType, string>> = {
@@ -23,7 +26,14 @@ export class N8nOrchestrationAdapter implements OrchestrationGateway {
     if (!webhookPath) {
       throw new UnroutableOrchestrationEventError(event.eventType);
     }
-    return this.post(webhookPath, { event }, { "x-idempotency-key": event.id });
+    return this.post(
+      webhookPath,
+      { event },
+      {
+        "x-idempotency-key": event.id,
+        ...(event.correlationId ? { [CORRELATION_HEADER]: event.correlationId } : {}),
+      },
+    );
   }
 
   schedule(
@@ -60,7 +70,7 @@ export class N8nOrchestrationAdapter implements OrchestrationGateway {
         {
           method: "POST",
           headers: {
-            authorization: `Bearer ${secret}`,
+            authorization: `Bearer ${createN8nWebhookToken(secret, { subject: webhookPath })}`,
             "content-type": "application/json",
             ...extraHeaders,
           },

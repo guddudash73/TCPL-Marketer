@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { BadGatewayException, type INestApplication } from "@nestjs/common";
 import { createPrismaClient } from "@tcpl-marketer/database";
@@ -9,6 +9,7 @@ import { createApp } from "../src/bootstrap.js";
 import { OpenAIClaimExtractionAdapter } from "../src/company-intelligence/openai-claim-extraction.adapter.js";
 import { OPENAI_CLAIM_CLIENT } from "../src/company-intelligence/openai-claim-extraction.adapter.js";
 import { diagnosticCandidateInclude, diagnosticSnapshotHash } from "../src/acceptance/diagnostic-snapshot.js";
+import { serviceHeaders } from "./support/service-auth.js";
 import type OpenAI from "openai";
 
 const database = createPrismaClient();
@@ -638,7 +639,7 @@ describe("company intelligence persistence and protected API", () => {
     const hash = diagnosticSnapshotHash(candidate);
     const claim = await database.acceptanceDiagnosticRun.create({ data: { leadCandidateId: candidate.id, campaignId, focus: "scoring", inputHash: hash, candidateUpdatedAt: candidate.updatedAt } });
     const extract = vi.spyOn(app!.get(OpenAIClaimExtractionAdapter), "extract").mockRejectedValue(new BadGatewayException("fixture timeout"));
-    const call = () => signedRequest("POST", "research", candidate.id).set("x-f001-diagnostic-run-id", claim.id).set("x-f001-input-hash", hash);
+    const call = () => signedRequest("POST", "research", candidate.id, { diagnosticRunId: claim.id, inputHash: hash });
     await call().expect(502);
     expect(await database.acceptanceDiagnosticRun.findUniqueOrThrow({ where: { id: claim.id } })).toMatchObject({ status: "NEEDS_REVIEW", outcome: "RECONCILE_REQUIRED" });
     await call().expect(409);
@@ -649,32 +650,25 @@ describe("company intelligence persistence and protected API", () => {
     method: "GET" | "POST",
     action: "profile" | "research",
     requestedCandidateId = candidateId,
+    bound: { diagnosticRunId?: string; inputHash?: string } = {},
   ) {
     const path =
       action === "research"
         ? `/internal/lead-candidates/${requestedCandidateId}/research`
         : `/internal/organizations/${organizationId}/profile`;
-    const timestamp = Date.now().toString();
-    const signature = createHmac("sha256", serviceSecret)
-      .update(`${timestamp}\n${method}\n${path}`)
-      .digest("hex");
+    const headers = serviceHeaders(method, path, bound);
     const agent = request(app!.getHttpServer());
     const pending = method === "GET" ? agent.get(path) : agent.post(path);
     return pending
-      .set("x-service-timestamp", timestamp)
-      .set("x-service-signature", signature);
+      .set(headers);
   }
 
   function signedCompanyFitGet(requestedOrganizationId: string) {
     const path = `/internal/organizations/${requestedOrganizationId}/company-fit`;
-    const timestamp = Date.now().toString();
-    const signature = createHmac("sha256", serviceSecret)
-      .update(`${timestamp}\nGET\n${path}`)
-      .digest("hex");
+    const headers = serviceHeaders("GET", path);
     return request(app!.getHttpServer())
       .get(path)
-      .set("x-service-timestamp", timestamp)
-      .set("x-service-signature", signature);
+      .set(headers);
   }
 });
 

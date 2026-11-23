@@ -4,11 +4,17 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { Logger } from "nestjs-pino";
 
 import { AppModule } from "./app.module.js";
+import { correlationMiddleware } from "./common/correlation/correlation-context.js";
 import { HttpExceptionFilter } from "./common/http-exception.filter.js";
 
 export async function createApp(): Promise<INestApplication> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    // Signed service requests are verified against the exact bytes received.
+    rawBody: true,
+  });
 
+  app.use(correlationMiddleware);
   app.useLogger(app.get(Logger));
   app.enableCors({
     origin: process.env.WEB_URL ?? "http://localhost:3000",

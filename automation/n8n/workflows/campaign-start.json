@@ -6,7 +6,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "campaign-start",
-        "authentication": "headerAuth",
+        "authentication": "jwtAuth",
         "responseMode": "responseNode",
         "options": {}
       },
@@ -17,9 +17,9 @@
       "position": [-640, 0],
       "webhookId": "tcpl-campaign-start",
       "credentials": {
-        "httpHeaderAuth": {
-          "id": "tcpl-nestjs-service",
-          "name": "TCPL NestJS Service"
+        "jwtAuth": {
+          "id": "tcpl-nestjs-webhook-jwt",
+          "name": "TCPL NestJS Webhook JWT"
         }
       }
     },
@@ -31,6 +31,12 @@
               "id": "service-timestamp",
               "name": "serviceTimestamp",
               "value": "={{ Date.now().toString() }}",
+              "type": "string"
+            },
+            {
+              "id": "context-request-id",
+              "name": "serviceRequestId",
+              "value": "={{ 'n8n-' + $execution.id + '-context-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10) }}",
               "type": "string"
             },
             {
@@ -60,8 +66,8 @@
       "parameters": {
         "action": "hmac",
         "type": "SHA256",
-        "value": "={{ $json.serviceTimestamp + '\\nGET\\n' + $json.contextPath }}",
-        "secret": "={{ $env.N8N_SERVICE_SECRET }}",
+        "value": "={{ ['TCPL-HMAC-SHA256-V2', 'n8n-campaign-start', $json.serviceTimestamp, $json.serviceRequestId, 'GET', $json.contextPath, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', '', ''].join('\\n') }}",
+        "secret": "={{ $env.SERVICE_SECRET_N8N_CAMPAIGN_START }}",
         "encoding": "hex"
       },
       "id": "sign-service-request",
@@ -77,12 +83,24 @@
         "headerParameters": {
           "parameters": [
             {
+              "name": "x-service-key-id",
+              "value": "n8n-campaign-start"
+            },
+            {
               "name": "x-service-timestamp",
               "value": "={{ $json.serviceTimestamp }}"
             },
             {
+              "name": "x-service-request-id",
+              "value": "={{ $json.serviceRequestId }}"
+            },
+            {
               "name": "x-service-signature",
               "value": "={{ $json.data }}"
+            },
+            {
+              "name": "x-correlation-id",
+              "value": "={{ $('Campaign Started').item.json.headers['x-correlation-id'] || '' }}"
             }
           ]
         },
@@ -102,6 +120,12 @@
               "id": "discovery-timestamp",
               "name": "discoveryTimestamp",
               "value": "={{ Date.now().toString() }}",
+              "type": "string"
+            },
+            {
+              "id": "discovery-request-id",
+              "name": "discoveryRequestId",
+              "value": "={{ 'n8n-' + $execution.id + '-discovery-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10) }}",
               "type": "string"
             },
             {
@@ -125,8 +149,8 @@
       "parameters": {
         "action": "hmac",
         "type": "SHA256",
-        "value": "={{ $json.discoveryTimestamp + '\\nPOST\\n' + $json.discoveryPath }}",
-        "secret": "={{ $env.N8N_SERVICE_SECRET }}",
+        "value": "={{ ['TCPL-HMAC-SHA256-V2', 'n8n-campaign-start', $json.discoveryTimestamp, $json.discoveryRequestId, 'POST', $json.discoveryPath, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', '', ''].join('\\n') }}",
+        "secret": "={{ $env.SERVICE_SECRET_N8N_CAMPAIGN_START }}",
         "encoding": "hex"
       },
       "id": "sign-discovery-request",
@@ -143,12 +167,24 @@
         "headerParameters": {
           "parameters": [
             {
+              "name": "x-service-key-id",
+              "value": "n8n-campaign-start"
+            },
+            {
               "name": "x-service-timestamp",
               "value": "={{ $json.discoveryTimestamp }}"
             },
             {
+              "name": "x-service-request-id",
+              "value": "={{ $json.discoveryRequestId }}"
+            },
+            {
               "name": "x-service-signature",
               "value": "={{ $json.data }}"
+            },
+            {
+              "name": "x-correlation-id",
+              "value": "={{ $('Campaign Started').item.json.headers['x-correlation-id'] || '' }}"
             }
           ]
         },
@@ -164,7 +200,16 @@
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { executionId: $execution.id, discovery: $json } }}",
-        "options": {}
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "x-correlation-id",
+                "value": "={{ $('Campaign Started').item.json.headers['x-correlation-id'] || '' }}"
+              }
+            ]
+          }
+        }
       },
       "id": "confirm-orchestration",
       "name": "Confirm Orchestration",

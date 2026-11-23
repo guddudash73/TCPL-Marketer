@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { Public } from "../auth/public.decorator.js";
 import { ServiceAuthGuard } from "../common/service-auth.guard.js";
+import { RequiresServiceScope } from "../common/service-auth/service-scope.decorator.js";
 import { ClaimExtractionService } from "./claim-extraction.service.js";
 import { CompanyFitEvidenceService } from "./company-fit-evidence.service.js";
 
@@ -24,6 +25,7 @@ export class InternalCompanyIntelligenceController {
   ) {}
 
   @Post("lead-candidates/:id/research")
+  @RequiresServiceScope("candidate.research.run")
   research(
     @Param("id", { schema: organizationIdSchema }) id: string,
     @Headers("x-f001-diagnostic-run-id") diagnosticRunId?: string,
@@ -33,6 +35,7 @@ export class InternalCompanyIntelligenceController {
   }
 
   @Get("organizations/:id/profile")
+  @RequiresServiceScope("organization.profile.read")
   profile(
     @Param("id", { schema: organizationIdSchema }) id: string,
   ): Promise<unknown> {
@@ -40,6 +43,7 @@ export class InternalCompanyIntelligenceController {
   }
 
   @Post("organizations/:id/company-fit")
+  @RequiresServiceScope("organization.company_fit.write")
   recordCompanyFit(
     @Param("id", { schema: organizationIdSchema }) id: string,
     @Body({ schema: RecordCompanyFitEvidenceSchema })
@@ -49,6 +53,7 @@ export class InternalCompanyIntelligenceController {
   }
 
   @Get("organizations/:id/company-fit")
+  @RequiresServiceScope("organization.company_fit.read")
   getCompanyFit(
     @Param("id", { schema: organizationIdSchema }) id: string,
   ): Promise<unknown> {

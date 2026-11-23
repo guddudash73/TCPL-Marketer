@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { Public } from "../auth/public.decorator.js";
 import { ServiceAuthGuard } from "../common/service-auth.guard.js";
+import { RequiresServiceScope } from "../common/service-auth/service-scope.decorator.js";
 import { OpportunityScoringPersistenceService } from "./opportunity-scoring-persistence.service.js";
 
 const candidateIdSchema = z.string().uuid();
@@ -17,6 +18,7 @@ export class InternalScoringController {
   ) {}
 
   @Post(":id/score")
+  @RequiresServiceScope("candidate.score.run")
   score(
     @Param("id", { schema: candidateIdSchema }) id: string,
     @Headers("x-f001-diagnostic-run-id") diagnosticRunId?: string,
@@ -26,6 +28,7 @@ export class InternalScoringController {
   }
 
   @Get(":id/score")
+  @RequiresServiceScope("candidate.score.read")
   latest(@Param("id", { schema: candidateIdSchema }) id: string): Promise<unknown> {
     return this.scoring.getLatestScore(id);
   }

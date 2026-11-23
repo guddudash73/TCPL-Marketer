@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { INestApplication } from "@nestjs/common";
 import { createPrismaClient } from "@tcpl-marketer/database";
@@ -9,6 +9,7 @@ import { runDay5Harness } from "../src/acceptance/day5-harness.js";
 import { PasswordHasher } from "../src/auth/password-hasher.js";
 import { createApp } from "../src/bootstrap.js";
 import { OrganizationResolutionService } from "../src/search/organization-resolution.service.js";
+import { serviceHeaders } from "./support/service-auth.js";
 
 const database = createPrismaClient();
 const suffix = randomUUID();
@@ -303,15 +304,11 @@ describe("F001 caller-to-PostgreSQL provenance and cleanup boundary", () => {
     const diagnosticRequest = vi.fn().mockImplementation(async (_url: unknown, init: RequestInit) => {
       const body = JSON.parse(String(init.body)) as { diagnosticRunId: string; inputHash: string };
       const path = `/internal/lead-candidates/${normalCandidateId}/research`;
-      const timestamp = Date.now().toString();
-      const signature = createHmac("sha256", "f001-local-test-service-secret")
-        .update(`${timestamp}\nPOST\n${path}`).digest("hex");
-      const signed = () => request(app!.getHttpServer()).post(path)
-        .set("x-service-timestamp", timestamp)
-        .set("x-service-signature", signature);
+      const signed = (bound: { diagnosticRunId?: string; inputHash?: string } = {}) =>
+        request(app!.getHttpServer()).post(path).set(serviceHeaders("POST", path, bound));
 
       expect((await signed()).status).toBe(409);
-      expect((await signed().set("x-f001-diagnostic-run-id", body.diagnosticRunId)).status).toBe(409);
+      expect((await signed({ diagnosticRunId: body.diagnosticRunId })).status).toBe(409);
       const source = await database.source.findFirstOrThrow({
         where: { organizationId: normalOrganizationId, webDocument: { isNot: null } },
       });
@@ -319,9 +316,7 @@ describe("F001 caller-to-PostgreSQL provenance and cleanup boundary", () => {
         where: { id: source.id },
         data: { contentHash: createHash("sha256").update("changed after claim").digest("hex") },
       });
-      expect((await signed()
-        .set("x-f001-diagnostic-run-id", body.diagnosticRunId)
-        .set("x-f001-input-hash", body.inputHash)).status).toBe(409);
+      expect((await signed({ diagnosticRunId: body.diagnosticRunId, inputHash: body.inputHash })).status).toBe(409);
       expect(await database.claimExtractionRun.count({
         where: { organizationId: normalOrganizationId },
       })).toBe(beforeResearchRuns);

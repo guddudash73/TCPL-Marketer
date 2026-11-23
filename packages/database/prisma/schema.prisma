@@ -206,11 +206,15 @@ model AuditLog {
   resourceType String   @map("resource_type") @db.VarChar(128)
   resourceId   String?  @map("resource_id") @db.VarChar(320)
   metadata     Json?
+  correlationId String? @map("correlation_id") @db.VarChar(64)
+  campaignId   String?  @map("campaign_id") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   actor        User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([actorUserId, createdAt])
   @@index([resourceType, resourceId])
+  @@index([correlationId])
+  @@index([campaignId, createdAt])
   @@map("audit_logs")
 }
 
@@ -711,12 +715,25 @@ model OutboxEvent {
   leaseOwner        String?           @map("lease_owner") @db.VarChar(128)
   leaseExpiresAt    DateTime?         @map("lease_expires_at") @db.Timestamptz(6)
   deadLetteredAt    DateTime?         @map("dead_lettered_at") @db.Timestamptz(6)
+  correlationId     String?           @map("correlation_id") @db.VarChar(64)
   automationRun     AutomationRun?
 
   @@index([status, availableAt])
   @@index([status, leaseExpiresAt])
   @@index([aggregateType, aggregateId, createdAt])
   @@map("outbox_events")
+}
+
+/// One accepted signed service request. A repeated request ID is a replay.
+model ServiceRequestNonce {
+  callerId  String   @map("caller_id") @db.VarChar(64)
+  requestId String   @map("request_id") @db.VarChar(128)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@id([callerId, requestId])
+  @@index([expiresAt])
+  @@map("service_request_nonces")
 }
 
 model AutomationRun {
@@ -756,6 +773,7 @@ model StageRun {
   outcome        String?        @db.VarChar(128)
   outcomeReason  String?        @map("outcome_reason") @db.Text
   result         Json?
+  correlationId  String?        @map("correlation_id") @db.VarChar(64)
   startedAt      DateTime?      @map("started_at") @db.Timestamptz(6)
   completedAt    DateTime?      @map("completed_at") @db.Timestamptz(6)
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)

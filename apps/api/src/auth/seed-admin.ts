@@ -3,6 +3,7 @@ import "reflect-metadata";
 import { createPrismaClient } from "@tcpl-marketer/database";
 import { z } from "zod";
 
+import { buildAuditRow } from "../audit/audit-row.js";
 import { PasswordHasher } from "./password-hasher.js";
 
 const seedEnvironmentSchema = z.object({
@@ -66,13 +67,12 @@ try {
       update: {},
     }),
     database.auditLog.create({
-      data: {
-        actorUserId: adminUser.id,
+      data: buildAuditRow({
         action: existingUser ? "admin.seed.verified" : "admin.seed.created",
-        resourceType: "user",
         resourceId: adminUser.id,
+        actorUserId: adminUser.id,
         metadata: { passwordChanged: shouldSetPassword },
-      },
+      }),
     }),
   ]);
 

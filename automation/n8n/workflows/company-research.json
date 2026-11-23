@@ -6,7 +6,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "company-research",
-        "authentication": "headerAuth",
+        "authentication": "jwtAuth",
         "responseMode": "responseNode",
         "options": {}
       },
@@ -17,9 +17,9 @@
       "position": [-480, 0],
       "webhookId": "tcpl-company-research",
       "credentials": {
-        "httpHeaderAuth": {
-          "id": "tcpl-nestjs-service",
-          "name": "TCPL NestJS Service"
+        "jwtAuth": {
+          "id": "tcpl-nestjs-webhook-jwt",
+          "name": "TCPL NestJS Webhook JWT"
         }
       }
     },
@@ -31,6 +31,12 @@
               "id": "research-timestamp",
               "name": "researchTimestamp",
               "value": "={{ Date.now().toString() }}",
+              "type": "string"
+            },
+            {
+              "id": "research-request-id",
+              "name": "researchRequestId",
+              "value": "={{ 'n8n-' + $execution.id + '-research-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10) }}",
               "type": "string"
             },
             {
@@ -54,8 +60,8 @@
       "parameters": {
         "action": "hmac",
         "type": "SHA256",
-        "value": "={{ $json.researchTimestamp + '\\nPOST\\n' + $json.researchPath }}",
-        "secret": "={{ $env.N8N_SERVICE_SECRET }}",
+        "value": "={{ ['TCPL-HMAC-SHA256-V2', 'n8n-company-research', $json.researchTimestamp, $json.researchRequestId, 'POST', $json.researchPath, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', ($('Company Research Requested').item.json.body.diagnosticRunId || ''), ($('Company Research Requested').item.json.body.inputHash || '')].join('\\n') }}",
+        "secret": "={{ $env.SERVICE_SECRET_N8N_COMPANY_RESEARCH }}",
         "encoding": "hex"
       },
       "id": "sign-research-request",
@@ -72,12 +78,24 @@
         "headerParameters": {
           "parameters": [
             {
+              "name": "x-service-key-id",
+              "value": "n8n-company-research"
+            },
+            {
               "name": "x-service-timestamp",
               "value": "={{ $json.researchTimestamp }}"
             },
             {
+              "name": "x-service-request-id",
+              "value": "={{ $json.researchRequestId }}"
+            },
+            {
               "name": "x-service-signature",
               "value": "={{ $json.data }}"
+            },
+            {
+              "name": "x-correlation-id",
+              "value": "={{ $('Company Research Requested').item.json.headers['x-correlation-id'] || '' }}"
             },
             {
               "name": "x-f001-diagnostic-run-id",
@@ -108,6 +126,12 @@
               "type": "string"
             },
             {
+              "id": "scoring-request-id",
+              "name": "scoringRequestId",
+              "value": "={{ 'n8n-' + $execution.id + '-scoring-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10) }}",
+              "type": "string"
+            },
+            {
               "id": "scoring-path",
               "name": "scoringPath",
               "value": "={{ '/internal/lead-candidates/' + $json.candidate.id + '/score' }}",
@@ -128,8 +152,8 @@
       "parameters": {
         "action": "hmac",
         "type": "SHA256",
-        "value": "={{ $json.scoringTimestamp + '\\nPOST\\n' + $json.scoringPath }}",
-        "secret": "={{ $env.N8N_SERVICE_SECRET }}",
+        "value": "={{ ['TCPL-HMAC-SHA256-V2', 'n8n-company-research', $json.scoringTimestamp, $json.scoringRequestId, 'POST', $json.scoringPath, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', ($('Company Research Requested').item.json.body.diagnosticRunId || ''), ($('Company Research Requested').item.json.body.inputHash || '')].join('\\n') }}",
+        "secret": "={{ $env.SERVICE_SECRET_N8N_COMPANY_RESEARCH }}",
         "encoding": "hex"
       },
       "id": "sign-scoring-request",
@@ -146,12 +170,24 @@
         "headerParameters": {
           "parameters": [
             {
+              "name": "x-service-key-id",
+              "value": "n8n-company-research"
+            },
+            {
               "name": "x-service-timestamp",
               "value": "={{ $json.scoringTimestamp }}"
             },
             {
+              "name": "x-service-request-id",
+              "value": "={{ $json.scoringRequestId }}"
+            },
+            {
               "name": "x-service-signature",
               "value": "={{ $json.data }}"
+            },
+            {
+              "name": "x-correlation-id",
+              "value": "={{ $('Company Research Requested').item.json.headers['x-correlation-id'] || '' }}"
             },
             {
               "name": "x-f001-diagnostic-run-id",
@@ -213,6 +249,12 @@
               "type": "string"
             },
             {
+              "id": "people-request-id",
+              "name": "peopleRequestId",
+              "value": "={{ 'n8n-' + $execution.id + '-people-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10) }}",
+              "type": "string"
+            },
+            {
               "id": "people-path",
               "name": "peoplePath",
               "value": "={{ '/internal/lead-candidates/' + $json.leadCandidateId + '/decision-makers' }}",
@@ -233,8 +275,8 @@
       "parameters": {
         "action": "hmac",
         "type": "SHA256",
-        "value": "={{ $json.peopleTimestamp + '\\nPOST\\n' + $json.peoplePath }}",
-        "secret": "={{ $env.N8N_SERVICE_SECRET }}",
+        "value": "={{ ['TCPL-HMAC-SHA256-V2', 'n8n-company-research', $json.peopleTimestamp, $json.peopleRequestId, 'POST', $json.peoplePath, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', ($('Company Research Requested').item.json.body.diagnosticRunId || ''), ($('Company Research Requested').item.json.body.inputHash || '')].join('\\n') }}",
+        "secret": "={{ $env.SERVICE_SECRET_N8N_COMPANY_RESEARCH }}",
         "encoding": "hex"
       },
       "id": "sign-people-request",
@@ -251,12 +293,24 @@
         "headerParameters": {
           "parameters": [
             {
+              "name": "x-service-key-id",
+              "value": "n8n-company-research"
+            },
+            {
               "name": "x-service-timestamp",
               "value": "={{ $json.peopleTimestamp }}"
             },
             {
+              "name": "x-service-request-id",
+              "value": "={{ $json.peopleRequestId }}"
+            },
+            {
               "name": "x-service-signature",
               "value": "={{ $json.data }}"
+            },
+            {
+              "name": "x-correlation-id",
+              "value": "={{ $('Company Research Requested').item.json.headers['x-correlation-id'] || '' }}"
             },
             {
               "name": "x-f001-diagnostic-run-id",
@@ -280,7 +334,16 @@
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { executionId: $execution.id, research: $('Research Company in NestJS').item.json, scoring: $('Score Candidate in NestJS').item.json, people: $json } }}",
-        "options": {}
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "x-correlation-id",
+                "value": "={{ $('Company Research Requested').item.json.headers['x-correlation-id'] || '' }}"
+              }
+            ]
+          }
+        }
       },
       "id": "confirm-research-with-people",
       "name": "Confirm Research with People",
@@ -292,7 +355,16 @@
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { executionId: $execution.id, research: $('Research Company in NestJS').item.json, scoring: $json, people: null } }}",
-        "options": {}
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "x-correlation-id",
+                "value": "={{ $('Company Research Requested').item.json.headers['x-correlation-id'] || '' }}"
+              }
+            ]
+          }
+        }
       },
       "id": "confirm-research",
       "name": "Confirm Research",

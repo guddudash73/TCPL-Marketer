@@ -53,7 +53,8 @@ export class CampaignsService {
     actorUserId: string,
   ): Promise<unknown> {
     await this.validateConfiguration(input);
-    const campaign = await this.database.client.campaign.create({
+    const campaign = await this.audit.withAudit(
+      (transaction) => transaction.campaign.create({
       data: {
         name: input.name,
         provenance: "APPLICATION",
@@ -86,17 +87,18 @@ export class CampaignsService {
         sequenceSteps: { create: input.sequence },
       },
       include: campaignInclude,
-    });
-    await this.audit.record({
-      action: "campaign.created",
-      resourceType: "campaign",
-      resourceId: campaign.id,
-      actorUserId,
-      metadata: {
-        automationMode: campaign.automationMode,
-        status: campaign.status,
-      },
-    });
+    }),
+      (created) => ({
+        action: "campaign.created",
+        resourceId: created.id,
+        campaignId: created.id,
+        actorUserId,
+        metadata: {
+          automationMode: created.automationMode,
+          status: created.status,
+        },
+      }),
+    );
     return campaign;
   }
 
@@ -132,7 +134,8 @@ export class CampaignsService {
     };
     await this.validateConfiguration(configuration);
 
-    const campaign = await this.database.client.campaign.update({
+    const campaign = await this.audit.withAudit(
+      (transaction) => transaction.campaign.update({
       where: { id },
       data: {
         name: input.name,
@@ -179,26 +182,29 @@ export class CampaignsService {
           : undefined,
       },
       include: campaignInclude,
-    });
-    await this.audit.record({
-      action: "campaign.updated",
-      resourceType: "campaign",
-      resourceId: campaign.id,
-      actorUserId,
-    });
+    }),
+      (updated) => ({
+        action: "campaign.updated",
+        resourceId: updated.id,
+        campaignId: updated.id,
+        actorUserId,
+      }),
+    );
     return campaign;
   }
 
   async delete(id: string, actorUserId: string): Promise<{ id: string }> {
     const existing = await this.requireCampaign(id);
     this.requireDraft(existing.status);
-    await this.database.client.campaign.delete({ where: { id } });
-    await this.audit.record({
-      action: "campaign.deleted",
-      resourceType: "campaign",
-      resourceId: id,
-      actorUserId,
-    });
+    await this.audit.withAudit(
+      (transaction) => transaction.campaign.delete({ where: { id } }),
+      () => ({
+        action: "campaign.deleted",
+        resourceId: id,
+        campaignId: id,
+        actorUserId,
+      }),
+    );
     return { id };
   }
 

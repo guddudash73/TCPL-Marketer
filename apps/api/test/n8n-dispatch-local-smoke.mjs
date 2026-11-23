@@ -1,4 +1,4 @@
-/* global console, fetch, process, URL */
+/* global AbortSignal, Buffer, console, fetch, process, URL */
 /**
  * Local proof of the dispatcher through the real n8n container (PH1-01b, PH1-01).
  * Runs the compiled API with a disposable database and a stubbed search provider,
@@ -8,10 +8,11 @@
  *   DATABASE_URL=<throwaway> node --env-file-if-exists=../../.env test/n8n-dispatch-local-smoke.mjs
  */
 import { execFile } from "node:child_process";
-import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 
 import { createPrismaClient } from "@tcpl-marketer/database";
+import { createN8nWebhookToken, signServiceRequest } from "@tcpl-marketer/orchestration-contracts";
 
 import { PasswordHasher } from "../dist/auth/password-hasher.js";
 import { createApp } from "../dist/bootstrap.js";
@@ -23,8 +24,8 @@ const databaseName = databaseUrl ? new URL(databaseUrl).pathname.slice(1) : "";
 if (!/^tcpl_(ph|test)/.test(databaseName)) {
   throw new Error("Refusing to run: DATABASE_URL must name a disposable tcpl_ph* or tcpl_test* database");
 }
-const serviceSecret = process.env.N8N_SERVICE_SECRET;
-if (!serviceSecret) throw new Error("N8N_SERVICE_SECRET is required");
+const tickSecret = process.env.SERVICE_SECRET_N8N_OUTBOX_DISPATCH;
+if (!tickSecret) throw new Error("SERVICE_SECRET_N8N_OUTBOX_DISPATCH is required");
 
 process.env.OPENAI_API_KEY = "disabled-for-local-smoke";
 process.env.OUTBOX_DISPATCH_ENABLED = "true";
@@ -41,16 +42,19 @@ function check(name, passed, detail) {
   if (!passed) throw new Error(`Check failed: ${name} ${JSON.stringify(detail ?? "")}`);
 }
 
-async function signedTick() {
-  const path = "/internal/orchestration/dispatch";
-  const timestamp = Date.now().toString();
-  const signature = createHmac("sha256", serviceSecret)
-    .update(`${timestamp}\nPOST\n${path}`)
-    .digest("hex");
-  const response = await fetch(api + path, {
+const tickPath = "/internal/orchestration/dispatch";
+const tickHeaders = (overrides = {}) =>
+  signServiceRequest({
+    keyId: "n8n-outbox-dispatch",
+    secret: tickSecret,
     method: "POST",
-    headers: { "x-service-timestamp": timestamp, "x-service-signature": signature },
+    path: tickPath,
+    requestId: `smoke-${randomUUID()}`,
+    ...overrides,
   });
+
+async function signedTick() {
+  const response = await fetch(api + tickPath, { method: "POST", headers: tickHeaders() });
   if (!response.ok) throw new Error(`Tick returned HTTP ${response.status}`);
   return response.json();
 }
@@ -117,10 +121,10 @@ async function main() {
     });
     if (login.status !== 200) throw new Error(`Login returned HTTP ${login.status}`);
     const cookie = (login.headers.getSetCookie()[0] ?? "").split(";")[0] ?? "";
-    const authed = (path, method = "GET", body) =>
+    const authed = (path, method = "GET", body, extraHeaders = {}) =>
       fetch(api + path, {
         method,
-        headers: { cookie, "content-type": "application/json", origin: "http://localhost:3000" },
+        headers: { cookie, "content-type": "application/json", origin: "http://localhost:3000", ...extraHeaders },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
 
@@ -154,8 +158,10 @@ async function main() {
 
     // 1. Normal start through the supported API and the real n8n workflow.
     const first = await newCampaign("Smoke normal start");
-    const started = await authed(`/campaigns/${first}/start`, "POST");
+    const traceId = `smoke-trace-${randomUUID().slice(0, 8)}`;
+    const started = await authed(`/campaigns/${first}/start`, "POST", undefined, { "x-correlation-id": traceId });
     check("normalStartHttp201", started.status === 201, started.status);
+    check("startEchoesCorrelationId", started.headers.get("x-correlation-id") === traceId);
     const firstEvent = await database.outboxEvent.findUniqueOrThrow({
       where: { idempotencyKey: `campaign-start:${first}` },
       include: { automationRun: true },
@@ -165,6 +171,17 @@ async function main() {
     const firstRun = await database.stageRun.findFirstOrThrow({ where: { campaignId: first } });
     check("discoveryStageSucceeded", firstRun.status === "SUCCEEDED" && firstRun.attempt === 1, firstRun.status);
     check("providerCalledOnce", planCalls === 1 && searchCalls === 1, { planCalls, searchCalls });
+    // The stage run was created by the request n8n made, so this proves the workflow forwarded the header.
+    check("n8nForwardedCorrelationId", firstRun.correlationId === traceId, firstRun.correlationId);
+    // campaign.created belongs to an earlier request, so it has its own trace.
+    const traced = await database.auditLog.findMany({
+      where: { campaignId: first, NOT: { action: "campaign.created" } },
+    });
+    check(
+      "auditRowsShareOneTrace",
+      traced.length >= 7 && traced.every((row) => row.correlationId === traceId),
+      traced.map((row) => row.action),
+    );
 
     // 2. The API "dies" after n8n accepted the event and before it is recorded.
     const second = await newCampaign("Smoke crash after publish");
@@ -217,6 +234,7 @@ async function main() {
         aggregateId: third,
         idempotencyKey: `smoke-poison:${third}`,
         payload: { campaignId: third },
+        availableAt: new Date(0),
       },
     });
     const poisonTick = await signedTick();
@@ -225,7 +243,71 @@ async function main() {
     const letter = letters.find((item) => item.id === poison.id);
     check("deadLetterVisible", Boolean(letter?.lastError.includes("No orchestration route")), letter?.lastError);
 
-    // 4. Optional: the tick nodes executed once by n8n. n8n cannot start a schedule
+    // 4. The live verifier: one success, then replay, tamper and wrong scope all fail with no effect.
+    const liveHeaders = tickHeaders();
+    const accepted = await fetch(api + tickPath, { method: "POST", headers: liveHeaders });
+    check("signedRequestAccepted", accepted.status === 200, accepted.status);
+    const nonceCount = await database.serviceRequestNonce.count();
+    const replayed = await fetch(api + tickPath, { method: "POST", headers: liveHeaders });
+    check("replayRejected", replayed.status === 401, replayed.status);
+    const tampered = await fetch(api + tickPath, {
+      method: "POST",
+      headers: { ...tickHeaders({ body: '{"a":1}' }), "content-type": "application/json" },
+      body: '{"a":2}',
+    });
+    check("tamperedBodyRejected", tampered.status === 401, tampered.status);
+    const otherPath = `/internal/campaigns/${first}/prepare-discovery`;
+    const wrongScope = await fetch(api + otherPath, {
+      method: "POST",
+      headers: tickHeaders({ path: otherPath }),
+    });
+    check("wrongScopeRejected", wrongScope.status === 403, wrongScope.status);
+    check("rejectionsStoredNoNonce", (await database.serviceRequestNonce.count()) === nonceCount);
+    const rejections = await database.auditLog.findMany({ where: { action: "service_auth.rejected" } });
+    const reasons = rejections.map((row) => row.metadata.reason);
+    check(
+      "rejectionsAudited",
+      ["REPLAYED", "BAD_SIGNATURE", "WRONG_SCOPE"].every((reason) => reasons.includes(reason)),
+      reasons,
+    );
+    const auditText = JSON.stringify(rejections);
+    check(
+      "noSignatureOrSecretInAudit",
+      !auditText.includes(liveHeaders["x-service-signature"]) && !auditText.includes(tickSecret),
+    );
+
+    // The research workflow signs for the real verifier. An unknown candidate stops before any provider
+    // call; a stored nonce proves the guard accepted n8n's signature.
+    const researchNoncesBefore = await database.serviceRequestNonce.count({ where: { callerId: "n8n-company-research" } });
+    const webhookCall = (authorization) =>
+      fetch(`${process.env.N8N_BASE_URL}/webhook/company-research`, {
+        method: "POST",
+        headers: { ...(authorization ? { authorization } : {}), "content-type": "application/json" },
+        body: JSON.stringify({ candidateId: randomUUID() }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    const webhookSecret = process.env.N8N_SERVICE_SECRET;
+    const issue = (secret, options = {}) => createN8nWebhookToken(secret, { subject: "company-research", ...options });
+    const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+    const now = Math.floor(Date.now() / 1_000);
+    const unsignedToken = `${encode({ alg: "none", typ: "JWT" })}.${encode({ sub: "company-research", iat: now, exp: now + 60 })}.`;
+    const refused = {
+      noToken: (await webhookCall()).status,
+      rawSecret: (await webhookCall(`Bearer ${webhookSecret}`)).status,
+      expiredToken: (await webhookCall(`Bearer ${issue(webhookSecret, { now: Date.now() - 120_000 })}`)).status,
+      wrongKey: (await webhookCall(`Bearer ${issue("a-different-signing-key-0123456789abcdef")}`)).status,
+      unsignedToken: (await webhookCall(`Bearer ${unsignedToken}`)).status,
+    };
+    check("webhookRefusesBadTokens", Object.values(refused).every((status) => status === 401 || status === 403), refused);
+    check(
+      "refusedWebhookCallsReachedNoEndpoint",
+      (await database.serviceRequestNonce.count({ where: { callerId: "n8n-company-research" } })) === researchNoncesBefore,
+    );
+    await webhookCall(`Bearer ${issue(webhookSecret)}`);
+    const researchNoncesAfter = await database.serviceRequestNonce.count({ where: { callerId: "n8n-company-research" } });
+    check("researchWorkflowAccepted", researchNoncesAfter === researchNoncesBefore + 1, { researchNoncesBefore, researchNoncesAfter });
+
+    // 5. Optional: the tick nodes executed once by n8n. n8n cannot start a schedule
     // trigger from its CLI, so import a copy with a manual trigger first.
     if (process.env.SMOKE_N8N_TICK_WORKFLOW === "1") {
       // Must not block: this process is also the API that n8n calls back.

@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { STAGE_DEFINITIONS } from "@tcpl-marketer/orchestration-contracts";
 
+import { bindCampaign, bindStageRun } from "../common/correlation/correlation-context.js";
 import { DatabaseService } from "../database/database.service.js";
 import { SearchService } from "../search/search.service.js";
 import { readOutboxDispatchConfig } from "./outbox-dispatch.config.js";
@@ -41,6 +42,7 @@ export class DiscoveryStageService {
   ) {}
 
   async run(campaignId: string): Promise<unknown> {
+    bindCampaign(campaignId);
     const campaign = await this.database.client.campaign.findUnique({
       where: { id: campaignId },
       select: { status: true },
@@ -66,6 +68,7 @@ export class DiscoveryStageService {
       entityId: campaignId,
       input: { startEventId: startEvent.id },
     });
+    bindStageRun(run.id);
     if (run.status === "RUNNING") await this.stageRuns.reclaimIfExpired(run.id);
 
     const { stageLeaseSeconds } = readOutboxDispatchConfig();

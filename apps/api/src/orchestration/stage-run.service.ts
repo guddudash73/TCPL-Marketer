@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { Prisma } from "@tcpl-marketer/database";
 import {
   CAMPAIGN_STATE_READER,
   STAGE_DEFINITIONS,
@@ -10,6 +11,8 @@ import {
   type StageRunStatus,
 } from "@tcpl-marketer/orchestration-contracts";
 
+import { AuditService } from "../audit/audit.service.js";
+import { bindStageRun, currentCorrelationId } from "../common/correlation/correlation-context.js";
 import { DatabaseService } from "../database/database.service.js";
 import { computeStageInputHash } from "./stage-input-hash.js";
 
@@ -30,6 +33,7 @@ export interface StageRunRecord {
   outcomeReason: string | null;
   /** Stored output of a finished run, returned on an idempotent replay. */
   result: unknown;
+  correlationId: string | null;
   startedAt: Date | null;
   completedAt: Date | null;
   createdAt: Date;
@@ -82,6 +86,7 @@ const RUN_COLUMNS = `
   outcome,
   outcome_reason AS "outcomeReason",
   result,
+  correlation_id AS "correlationId",
   started_at AS "startedAt",
   completed_at AS "completedAt",
   created_at AS "createdAt",
@@ -100,6 +105,7 @@ export class StageRunService {
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(CAMPAIGN_STATE_READER)
     private readonly campaignState: CampaignStateReader,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   /** Idempotent create-or-get for (entity, stage, input version). */
@@ -127,15 +133,25 @@ export class StageRunService {
     const existing = await this.database.client.stageRun.findUnique({ where: key });
     if (existing) return { run: existing as StageRunRecord, created: false };
     try {
-      const created = await this.database.client.stageRun.create({
-        data: {
-          campaignId: input.campaignId,
-          entityType: input.entityType,
-          entityId: input.entityId,
-          stage: input.stage,
-          inputHash,
-        },
-      });
+      const created = await this.audit.withAudit(
+        (transaction) =>
+          transaction.stageRun.create({
+            data: {
+              campaignId: input.campaignId,
+              entityType: input.entityType,
+              entityId: input.entityId,
+              stage: input.stage,
+              inputHash,
+              correlationId: currentCorrelationId() ?? null,
+            },
+          }),
+        (run) => ({
+          action: "stage.transitioned",
+          resourceId: run.id,
+          campaignId: run.campaignId,
+          metadata: { stage: run.stage, from: null, to: run.status, attempt: run.attempt },
+        }),
+      );
       return { run: created as StageRunRecord, created: true };
     } catch (error) {
       if (isUniqueViolation(error)) {
@@ -174,7 +190,9 @@ export class StageRunService {
     if (!(await this.campaignState.isDispatchable(run.campaignId))) {
       return { claimed: false, reason: "CAMPAIGN_NOT_DISPATCHABLE" };
     }
-    const rows = await this.database.client.$queryRawUnsafe<StageRunRecord[]>(
+    const rows = await this.audited(
+      (transaction) =>
+        transaction.$queryRawUnsafe<StageRunRecord[]>(
       `UPDATE stage_runs
           SET status = 'RUNNING'::"StageRunStatus",
               attempt = attempt + 1,
@@ -190,8 +208,12 @@ export class StageRunService {
       runId,
       leaseOwner,
       leaseSeconds,
+    ),
+      "PENDING",
+      undefined,
     );
     const claimed = rows[0];
+    if (claimed) bindStageRun(claimed.id);
     return claimed
       ? { claimed: true, run: claimed }
       : { claimed: false, reason: "NOT_PENDING" };
@@ -228,7 +250,9 @@ export class StageRunService {
     if (!input.outcome.trim()) {
       throw new StageTransitionError("A terminal outcome code is required");
     }
-    const rows = await this.database.client.$queryRawUnsafe<StageRunRecord[]>(
+    const rows = await this.audited(
+      (transaction) =>
+        transaction.$queryRawUnsafe<StageRunRecord[]>(
       `UPDATE stage_runs
           SET status = $3::"StageRunStatus",
               outcome = $4,
@@ -250,6 +274,9 @@ export class StageRunService {
       input.outcome.slice(0, 128),
       input.reason ?? null,
       input.result === undefined ? null : JSON.stringify(input.result),
+    ),
+      "RUNNING",
+      input.reason,
     );
     const finished = rows[0];
     if (!finished) {
@@ -268,7 +295,9 @@ export class StageRunService {
   ): Promise<boolean> {
     const run = await this.requireRun(runId);
     requireStageTransition(run.stage, "RUNNING", "PENDING", STAGE_RUNTIME_OWNER);
-    const rows = await this.database.client.$queryRawUnsafe<Array<{ id: string }>>(
+    const rows = await this.audited(
+      (transaction) =>
+        transaction.$queryRawUnsafe<StageRunRecord[]>(
       `UPDATE stage_runs
           SET status = 'PENDING'::"StageRunStatus",
               lease_owner = NULL,
@@ -278,17 +307,22 @@ export class StageRunService {
         WHERE id = $1::uuid
           AND status = 'RUNNING'::"StageRunStatus"
           AND lease_owner = $2
-        RETURNING id`,
+        RETURNING ${RUN_COLUMNS}`,
       runId,
       leaseOwner,
       reason.slice(0, 2_000),
+    ),
+      "RUNNING",
+      reason,
     );
     return rows.length === 1;
   }
 
   /** Reclaims one run if, and only if, its lease has expired. */
   async reclaimIfExpired(runId: string): Promise<boolean> {
-    const rows = await this.database.client.$queryRawUnsafe<Array<{ id: string }>>(
+    const rows = await this.audited(
+      (transaction) =>
+        transaction.$queryRawUnsafe<StageRunRecord[]>(
       `UPDATE stage_runs
           SET status = 'PENDING'::"StageRunStatus",
               lease_owner = NULL,
@@ -298,15 +332,20 @@ export class StageRunService {
         WHERE id = $1::uuid
           AND status = 'RUNNING'::"StageRunStatus"
           AND lease_expires_at < now()
-        RETURNING id`,
+        RETURNING ${RUN_COLUMNS}`,
       runId,
+    ),
+      "RUNNING",
+      "Lease expired before the stage run finished",
     );
     return rows.length === 1;
   }
 
   /** Abandoned work: RUNNING with an expired lease goes back to PENDING (stage runtime). */
   async reclaimExpired(limit = 50): Promise<StageRunRecord[]> {
-    return this.database.client.$queryRawUnsafe<StageRunRecord[]>(
+    return this.audited(
+      (transaction) =>
+        transaction.$queryRawUnsafe<StageRunRecord[]>(
       `UPDATE stage_runs
           SET status = 'PENDING'::"StageRunStatus",
               lease_owner = NULL,
@@ -322,6 +361,9 @@ export class StageRunService {
                FOR UPDATE SKIP LOCKED)
         RETURNING ${RUN_COLUMNS}`,
       limit,
+    ),
+      "RUNNING",
+      "Lease expired before the stage run finished",
     );
   }
 
@@ -352,7 +394,9 @@ export class StageRunService {
     const run = await this.requireRun(runId);
     requireStageTransition(run.stage, run.status, to, actor);
     const terminal = ["SUCCEEDED", "FAILED", "REVIEW_REQUIRED", "CANCELLED", "SKIPPED"].includes(to);
-    const rows = await this.database.client.$queryRawUnsafe<StageRunRecord[]>(
+    const rows = await this.audited(
+      (transaction) =>
+        transaction.$queryRawUnsafe<StageRunRecord[]>(
       `UPDATE stage_runs
           SET status = $3::"StageRunStatus",
               lease_owner = NULL,
@@ -368,6 +412,9 @@ export class StageRunService {
       to,
       reason?.slice(0, 2_000) ?? null,
       terminal,
+    ),
+      run.status,
+      reason,
     );
     const updated = rows[0];
     if (!updated) {
@@ -376,6 +423,40 @@ export class StageRunService {
       );
     }
     return updated;
+  }
+
+  /**
+   * Runs one state change and writes its audit row in the same transaction, so
+   * a transition cannot commit without its audit record or the reverse.
+   */
+  private async audited(
+    statement: (transaction: Prisma.TransactionClient) => Promise<StageRunRecord[]>,
+    from: string,
+    reason: string | null | undefined,
+  ): Promise<StageRunRecord[]> {
+    return this.database.client.$transaction(async (transaction) => {
+      const rows = await statement(transaction);
+      for (const run of rows) {
+        await this.audit.record(
+          {
+            action: "stage.transitioned",
+            resourceId: run.id,
+            campaignId: run.campaignId,
+            correlationId: run.correlationId ?? undefined,
+            metadata: {
+              stage: run.stage,
+              from,
+              to: run.status,
+              attempt: run.attempt,
+              outcome: run.outcome,
+              reason: reason ?? run.outcomeReason,
+            },
+          },
+          transaction,
+        );
+      }
+      return rows;
+    });
   }
 
   private async requireRun(runId: string): Promise<StageRunRecord> {

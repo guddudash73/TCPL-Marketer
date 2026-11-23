@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { createHmac, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import type { INestApplication } from "@nestjs/common";
@@ -13,6 +13,7 @@ import {
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AuditService } from "../src/audit/audit.service.js";
 import { PasswordHasher } from "../src/auth/password-hasher.js";
 import { createApp } from "../src/bootstrap.js";
 import type { DatabaseService } from "../src/database/database.service.js";
@@ -27,9 +28,11 @@ import {
   type ClaimedEvent,
   type DispatchOutcome,
 } from "../src/orchestration/outbox-dispatcher.service.js";
+import { OrchestrationService } from "../src/orchestration/orchestration.service.js";
 import { PrismaCampaignStateReader } from "../src/orchestration/prisma-campaign-state-reader.js";
 import { StageRunService } from "../src/orchestration/stage-run.service.js";
 import type { SearchService } from "../src/search/search.service.js";
+import { serviceHeaders } from "./support/service-auth.js";
 
 // The dispatcher claims any due event, so this file owns a private database and
 // can never pick up events from parallel test files or from the dev database.
@@ -98,6 +101,7 @@ describe("outbox dispatcher (private PostgreSQL database)", () => {
   let gateway: FakeGateway;
   let dispatcher: CrashingDispatcher;
   let stageRuns: StageRunService;
+  let audit: AuditService;
   let databaseService: DatabaseService;
   let userId = "";
   let sectorId = "";
@@ -128,6 +132,8 @@ describe("outbox dispatcher (private PostgreSQL database)", () => {
         aggregateId: overrides.aggregateId ?? campaignId,
         idempotencyKey: `campaign-start:${overrides.aggregateId ?? campaignId}`,
         payload: { campaignId, actorUserId: userId },
+        // Due now on any clock: Prisma would otherwise fill this from the host clock.
+        availableAt: new Date(0),
       },
     });
     if (!overrides.aggregateId) {
@@ -196,8 +202,9 @@ describe("outbox dispatcher (private PostgreSQL database)", () => {
     await database.campaign.deleteMany({});
     gateway = new FakeGateway();
     const reader = new PrismaCampaignStateReader(databaseService);
-    stageRuns = new StageRunService(databaseService, reader);
-    dispatcher = new CrashingDispatcher(databaseService, gateway, reader, stageRuns);
+    audit = new AuditService(databaseService);
+    stageRuns = new StageRunService(databaseService, reader, audit);
+    dispatcher = new CrashingDispatcher(databaseService, gateway, reader, stageRuns, audit);
   });
 
   describe("configuration and backoff", () => {
@@ -241,7 +248,7 @@ describe("outbox dispatcher (private PostgreSQL database)", () => {
     }
     const reader = new PrismaCampaignStateReader(databaseService);
     const others = [1, 2, 3].map(
-      () => new OutboxDispatcherService(databaseService, gateway, reader, stageRuns),
+      () => new OutboxDispatcherService(databaseService, gateway, reader, stageRuns, audit),
     );
     const results = await Promise.all([dispatcher.tick(), ...others.map((other) => other.tick())]);
     expect(results.reduce((sum, result) => sum + result.published, 0)).toBe(8);
@@ -423,6 +430,29 @@ describe("outbox dispatcher (private PostgreSQL database)", () => {
     expect(gateway.countFor(event.id)).toBe(2);
   });
 
+  it("keeps due times on the database clock when the host clock runs ahead", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 120_000 });
+    try {
+      const draft = await seedCampaign();
+      await database.campaign.update({ where: { id: draft.id }, data: { status: "DRAFT" } });
+      await new OrchestrationService(databaseService, dispatcher, audit).startCampaign(draft.id, userId);
+      const [started] = await database.$queryRawUnsafe<Array<{ due: boolean }>>(
+        `SELECT available_at <= now() AS due FROM outbox_events WHERE aggregate_id = $1::uuid`,
+        draft.id,
+      );
+      expect(started?.due).toBe(true);
+
+      const crashed = await seedCampaign();
+      const crashedEvent = await seedEvent(crashed.id);
+      dispatcher.crashAfterPublish = true;
+      await expect(dispatcher.dispatchEvent(crashedEvent.id)).rejects.toThrow("simulated crash");
+      await expireLease(crashedEvent.id);
+      expect(await dispatcher.tick()).toMatchObject({ reclaimedEvents: 1, published: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not overwrite state when the lease was lost during publish", async () => {
     const campaign = await seedCampaign();
     const event = await seedEvent(campaign.id);
@@ -541,11 +571,9 @@ describe("outbox dispatcher (private PostgreSQL database)", () => {
     let manager: ReturnType<typeof request.agent>;
     let member: ReturnType<typeof request.agent>;
 
-    const signed = (method: "GET" | "POST", path: string, secret = serviceSecret) => {
-      const timestamp = Date.now().toString();
-      const signature = createHmac("sha256", secret).update(`${timestamp}\n${method}\n${path}`).digest("hex");
+    const signed = (method: "GET" | "POST", path: string, secret?: string) => {
       const call = method === "POST" ? request(app.getHttpServer()).post(path) : request(app.getHttpServer()).get(path);
-      return call.set("x-service-timestamp", timestamp).set("x-service-signature", signature);
+      return call.set(serviceHeaders(method, path, secret ? { secret } : {}));
     };
 
     beforeAll(async () => {
@@ -571,9 +599,10 @@ describe("outbox dispatcher (private PostgreSQL database)", () => {
       await request(app.getHttpServer()).post(path).expect(401);
       await signed("POST", path, "wrong-secret-value").expect(401);
       // A signature is bound to one method and path.
-      const timestamp = Date.now().toString();
-      const otherPath = createHmac("sha256", serviceSecret).update(`${timestamp}\nPOST\n/internal/other`).digest("hex");
-      await request(app.getHttpServer()).post(path).set("x-service-timestamp", timestamp).set("x-service-signature", otherPath).expect(401);
+      await request(app.getHttpServer())
+        .post(path)
+        .set(serviceHeaders("POST", "/internal/other", { caller: "n8n-outbox-dispatch" }))
+        .expect(401);
       await manager.post(path).expect(401);
       const response = await signed("POST", path).expect(200);
       expect(response.body).toMatchObject({ enabled: true, claimed: 0 });

@@ -30,6 +30,18 @@
               "type": "string"
             },
             {
+              "id": "dispatch-request-id",
+              "name": "serviceRequestId",
+              "value": "={{ 'n8n-' + $execution.id + '-dispatch-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10) }}",
+              "type": "string"
+            },
+            {
+              "id": "dispatch-correlation-id",
+              "name": "correlationId",
+              "value": "={{ 'n8n-tick-' + $execution.id + '-' + Date.now() }}",
+              "type": "string"
+            },
+            {
               "id": "dispatch-path",
               "name": "dispatchPath",
               "value": "/internal/orchestration/dispatch",
@@ -49,8 +61,8 @@
       "parameters": {
         "action": "hmac",
         "type": "SHA256",
-        "value": "={{ $json.serviceTimestamp + '\\nPOST\\n' + $json.dispatchPath }}",
-        "secret": "={{ $env.N8N_SERVICE_SECRET }}",
+        "value": "={{ ['TCPL-HMAC-SHA256-V2', 'n8n-outbox-dispatch', $json.serviceTimestamp, $json.serviceRequestId, 'POST', $json.dispatchPath, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', '', ''].join('\\n') }}",
+        "secret": "={{ $env.SERVICE_SECRET_N8N_OUTBOX_DISPATCH }}",
         "encoding": "hex"
       },
       "id": "sign-dispatch-request",
@@ -67,12 +79,24 @@
         "headerParameters": {
           "parameters": [
             {
+              "name": "x-service-key-id",
+              "value": "n8n-outbox-dispatch"
+            },
+            {
               "name": "x-service-timestamp",
               "value": "={{ $json.serviceTimestamp }}"
             },
             {
+              "name": "x-service-request-id",
+              "value": "={{ $json.serviceRequestId }}"
+            },
+            {
               "name": "x-service-signature",
               "value": "={{ $json.data }}"
+            },
+            {
+              "name": "x-correlation-id",
+              "value": "={{ $json.correlationId }}"
             }
           ]
         },

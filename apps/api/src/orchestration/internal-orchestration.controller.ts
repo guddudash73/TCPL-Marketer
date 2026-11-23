@@ -11,6 +11,7 @@ import {
 import { Public } from "../auth/public.decorator.js";
 import { campaignIdSchema } from "../campaigns/campaign.schemas.js";
 import { ServiceAuthGuard } from "../common/service-auth.guard.js";
+import { RequiresServiceScope } from "../common/service-auth/service-scope.decorator.js";
 import {
   DiscoveryStageService,
   isDiscoveryInProgress,
@@ -29,6 +30,7 @@ export class InternalOrchestrationController {
   ) {}
 
   @Get(":id/context")
+  @RequiresServiceScope("campaign.context.read")
   getCampaignContext(
     @Param("id", { schema: campaignIdSchema }) id: string,
   ): Promise<unknown> {
@@ -36,6 +38,7 @@ export class InternalOrchestrationController {
   }
 
   @Post(":id/prepare-discovery")
+  @RequiresServiceScope("campaign.discovery.prepare")
   async prepareDiscovery(
     @Param("id", { schema: campaignIdSchema }) id: string,
     @Res({ passthrough: true }) response: { status(code: number): unknown },

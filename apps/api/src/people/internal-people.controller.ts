@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { Public } from "../auth/public.decorator.js";
 import { ServiceAuthGuard } from "../common/service-auth.guard.js";
+import { RequiresServiceScope } from "../common/service-auth/service-scope.decorator.js";
 import { DecisionMakerAssignmentService } from "./decision-maker-assignment.service.js";
 import { PeopleSelectionWorkflowService } from "./people-selection-workflow.service.js";
 
@@ -20,6 +21,7 @@ export class InternalPeopleController {
   ) {}
 
   @Post(":id/decision-makers")
+  @RequiresServiceScope("candidate.people.select")
   select(
     @Param("id", { schema: candidateIdSchema }) id: string,
     @Headers("x-f001-diagnostic-run-id") diagnosticRunId?: string,
@@ -29,6 +31,7 @@ export class InternalPeopleController {
   }
 
   @Get(":id/decision-makers")
+  @RequiresServiceScope("candidate.people.read")
   latest(@Param("id", { schema: candidateIdSchema }) id: string): Promise<unknown> {
     return this.assignments.getLatest(id);
   }

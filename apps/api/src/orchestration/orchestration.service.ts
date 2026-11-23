@@ -6,6 +6,8 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { AuditService } from "../audit/audit.service.js";
+import { currentCorrelationId } from "../common/correlation/correlation-context.js";
 import { requireCampaignTransition } from "../campaigns/campaign-state-machine.js";
 import { DatabaseService } from "../database/database.service.js";
 import { OutboxDispatcherService } from "./outbox-dispatcher.service.js";
@@ -18,6 +20,7 @@ export class OrchestrationService {
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(OutboxDispatcherService)
     private readonly dispatcher: OutboxDispatcherService,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async startCampaign(id: string, actorUserId: string): Promise<unknown> {
@@ -124,8 +127,14 @@ export class OrchestrationService {
           aggregateId: id,
           idempotencyKey: `campaign-start:${id}`,
           payload: { campaignId: id, actorUserId },
+          correlationId: currentCorrelationId() ?? null,
         },
       });
+      // Prisma fills this default from the host clock; due times are compared with the database clock.
+      await transaction.$executeRawUnsafe(
+        `UPDATE outbox_events SET available_at = now() WHERE id = $1::uuid`,
+        event.id,
+      );
       const automationRun = await transaction.automationRun.create({
         data: {
           campaignId: id,
@@ -133,15 +142,16 @@ export class OrchestrationService {
           provider: "n8n",
         },
       });
-      await transaction.auditLog.create({
-        data: {
+      await this.audit.record(
+        {
           action: "campaign.start_requested",
-          resourceType: "campaign",
           resourceId: id,
+          campaignId: id,
           actorUserId,
           metadata: { outboxEventId: event.id, automationRunId: automationRun.id },
         },
-      });
+        transaction,
+      );
       return { campaign: { ...campaign, status: "STARTING" }, event, automationRun };
     });
   }

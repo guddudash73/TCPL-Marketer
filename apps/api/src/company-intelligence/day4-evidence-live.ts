@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createPrismaClient } from "@tcpl-marketer/database";
+import { createN8nWebhookToken } from "@tcpl-marketer/orchestration-contracts";
 
 import { CrawlRunner } from "../crawler/crawl-runner.js";
 import type { DatabaseService } from "../database/database.service.js";
@@ -180,7 +181,7 @@ async function invokeResearch(candidateId: string): Promise<ResearchResponse> {
   const response = await fetch(`${n8nBaseUrl}/webhook/company-research`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${serviceSecret}`,
+      authorization: `Bearer ${createN8nWebhookToken(serviceSecret as string, { subject: "company-research" })}`,
       "content-type": "application/json",
     },
     body: JSON.stringify({ candidateId }),
