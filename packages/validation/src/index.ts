@@ -2,6 +2,69 @@ import { ClaimTypeSchema } from "@tcpl-marketer/ai-contracts";
 import { z } from "zod";
 
 const boundedUrl = z.string().url().max(2_048);
+const companyFitEvidenceBase = {
+  sourceId: z.uuid(),
+  evidenceExcerpt: z.string().trim().min(1).max(1_000),
+  confidence: z.number().finite().min(0).max(1),
+  conflictsWithSourceIds: z.array(z.uuid()).max(10).default([]),
+};
+
+export const CompanyFitFactTypeSchema = z.enum([
+  "HEADCOUNT",
+  "GEOGRAPHY",
+  "BUSINESS_MODEL",
+]);
+
+export const UnknownCompanyFitObservationSchema = z.strictObject({
+  factType: CompanyFitFactTypeSchema,
+  state: z.literal("UNKNOWN"),
+});
+
+export const VerifiedHeadcountObservationSchema = z
+  .strictObject({
+    factType: z.literal("HEADCOUNT"),
+    state: z.literal("VERIFIED"),
+    minimum: z.number().int().min(0).max(10_000_000),
+    maximum: z.number().int().min(0).max(10_000_000),
+    ...companyFitEvidenceBase,
+  })
+  .refine(({ minimum, maximum }) => minimum <= maximum, {
+    message: "Headcount minimum must not exceed maximum",
+    path: ["maximum"],
+  });
+
+export const VerifiedGeographyObservationSchema = z.strictObject({
+  factType: z.literal("GEOGRAPHY"),
+  state: z.literal("VERIFIED"),
+  value: z.string().trim().min(1).max(320),
+  ...companyFitEvidenceBase,
+});
+
+export const VerifiedBusinessModelObservationSchema = z.strictObject({
+  factType: z.literal("BUSINESS_MODEL"),
+  state: z.literal("VERIFIED"),
+  value: z.string().trim().min(1).max(500),
+  ...companyFitEvidenceBase,
+});
+
+export const CompanyFitObservationInputSchema = z.union([
+  UnknownCompanyFitObservationSchema,
+  VerifiedHeadcountObservationSchema,
+  VerifiedGeographyObservationSchema,
+  VerifiedBusinessModelObservationSchema,
+]);
+
+export const RecordCompanyFitEvidenceSchema = z.strictObject({
+  observations: z.array(CompanyFitObservationInputSchema).min(1).max(50),
+});
+
+export type CompanyFitObservationInput = z.infer<
+  typeof CompanyFitObservationInputSchema
+>;
+export type RecordCompanyFitEvidenceInput = z.infer<
+  typeof RecordCompanyFitEvidenceSchema
+>;
+
 const normalizedText = (maximum: number) =>
   z
     .string()

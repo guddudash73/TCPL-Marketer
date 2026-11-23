@@ -16,6 +16,7 @@ import {
 } from "@tcpl-marketer/validation";
 
 import { DatabaseService } from "../database/database.service.js";
+import { assertDiagnosticClaim } from "../acceptance/diagnostic-claim.js";
 import { scoreOpportunity } from "./opportunity-scoring.service.js";
 
 const scoreSelect = {
@@ -76,8 +77,23 @@ export class OpportunityScoringPersistenceService {
     @Inject(DatabaseService) private readonly database: DatabaseService,
   ) {}
 
-  async scoreLeadCandidate(candidateId: string): Promise<unknown> {
+  async scoreLeadCandidate(
+    candidateId: string,
+    diagnosticRunId?: string,
+    inputHash?: string,
+  ): Promise<unknown> {
+    const claim = await assertDiagnosticClaim(
+      this.database.client,
+      candidateId,
+      diagnosticRunId,
+      inputHash,
+    );
     const context = await this.loadContext(candidateId);
+    if (claim && claim.candidateUpdatedAt.getTime() !== context.candidate.updatedAt.getTime()) {
+      throw new ConflictException(
+        "Lead candidate changed before F001 scoring; reconcile before continuing",
+      );
+    }
     const weights = configuredScoringWeights(context.candidate.campaign);
     const input = scoringInput(context, weights);
     const result = scoreOpportunity(input);
@@ -100,6 +116,7 @@ export class OpportunityScoringPersistenceService {
           const transitioned = await transaction.leadCandidate.updateMany({
             where: {
               id: candidateId,
+              ...(claim ? { updatedAt: context.candidate.updatedAt } : {}),
               status: {
                 in: [
                   "ANALYSING",
@@ -137,10 +154,27 @@ export class OpportunityScoringPersistenceService {
             },
             select: { id: true },
           });
-          await transaction.leadCandidate.update({
+          const updatedCandidate = await transaction.leadCandidate.update({
             where: { id: candidateId },
             data: { status: candidateStatus(result) },
+            select: { updatedAt: true },
           });
+          if (diagnosticRunId && inputHash) {
+            const updatedClaim = await transaction.acceptanceDiagnosticRun.updateMany({
+              where: {
+                id: diagnosticRunId,
+                leadCandidateId: candidateId,
+                status: "CLAIMED",
+                inputHash,
+              },
+              data: { candidateUpdatedAt: updatedCandidate.updatedAt },
+            });
+            if (updatedClaim.count !== 1) {
+              throw new ConflictException(
+                "F001 diagnostic claim changed during scoring; reconcile before continuing",
+              );
+            }
+          }
           return transaction.leadScore.findUniqueOrThrow({
             where: { id: score.id },
             select: scoreSelect,

@@ -41,6 +41,12 @@ enum AutomationRunStatus {
   CANCELLED
 }
 
+enum AcceptanceDiagnosticStatus {
+  CLAIMED
+  VERIFIED
+  NEEDS_REVIEW
+}
+
 enum LeadCandidateStatus {
   DISCOVERED
   VALIDATING
@@ -87,6 +93,36 @@ enum PersonSourceType {
   COMPANY_WEBSITE
   PUBLIC_WEB
   PROVIDER
+}
+
+enum DecisionMakerAssignmentSlot {
+  PRIMARY
+  SECONDARY
+  FALLBACK
+}
+
+enum DecisionMakerSelectionStatus {
+  COMPLETE
+  REVIEW_REQUIRED
+}
+
+enum DataProvenance {
+  UNKNOWN
+  APPLICATION
+  ACCEPTANCE_FIXTURE
+  MANUALLY_REVIEWED
+}
+
+enum CompanyFitFactType {
+  HEADCOUNT
+  GEOGRAPHY
+  BUSINESS_MODEL
+}
+
+enum CompanyFitEvidenceState {
+  UNKNOWN
+  VERIFIED
+  CONFLICT
 }
 
 model User {
@@ -251,6 +287,7 @@ model DecisionMakerProfile {
   createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   capability    ServiceCapability @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+  assignments   DecisionMakerAssignment[]
 
   @@unique([capabilityId, title])
   @@index([capabilityId, priority])
@@ -260,6 +297,7 @@ model DecisionMakerProfile {
 model Campaign {
   id                     String                 @id @default(uuid()) @db.Uuid
   name                   String                 @db.VarChar(160)
+  provenance             DataProvenance         @default(UNKNOWN)
   sectorId               String                 @map("sector_id") @db.Uuid
   createdByUserId        String                 @map("created_by_user_id") @db.Uuid
   status                 CampaignStatus         @default(DRAFT)
@@ -316,6 +354,7 @@ model Organization {
   sources            Source[]
   claimExtractionRuns ClaimExtractionRun[]
   claims              Claim[]
+  companyFitObservations CompanyFitObservation[]
   people              Person[]
 
   @@index([normalizedName, normalizedLocation])
@@ -375,11 +414,39 @@ model Source {
   crawlAttempt   CrawlAttempt @relation(fields: [crawlAttemptId], references: [id], onDelete: Cascade)
   webDocument    WebDocument?
   claimEvidence  ClaimEvidence[]
+  companyFitObservations CompanyFitObservation[]
 
   @@index([organizationId, capturedAt])
   @@index([crawlRunId])
   @@index([url])
   @@map("sources")
+}
+
+model CompanyFitObservation {
+  id             String                  @id @default(uuid()) @db.Uuid
+  organizationId String                  @map("organization_id") @db.Uuid
+  factType       CompanyFitFactType      @map("fact_type")
+  state          CompanyFitEvidenceState
+  headcountMin   Int?                    @map("headcount_min")
+  headcountMax   Int?                    @map("headcount_max")
+  textValue      String?                 @map("text_value") @db.VarChar(500)
+  sourceId       String?                 @map("source_id") @db.Uuid
+  capturedAt     DateTime?               @map("captured_at") @db.Timestamptz(6)
+  confidence     Float?
+  evidenceExcerpt String?                @map("evidence_excerpt") @db.Text
+  conflictingSourceIds String[]          @default([]) @map("conflicting_source_ids") @db.Uuid
+  extractionRunId String?                @map("extraction_run_id") @db.Uuid
+  fingerprint    String                  @unique @db.Char(64)
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  source         Source?                 @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  extractionRun  ClaimExtractionRun?     @relation(fields: [extractionRunId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, factType, state])
+  @@index([sourceId])
+  @@index([extractionRunId])
+  @@map("company_fit_observations")
 }
 
 model WebDocument {
@@ -413,6 +480,7 @@ model ClaimExtractionRun {
   completedAt        DateTime?                @map("completed_at") @db.Timestamptz(6)
   organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   claims             Claim[]
+  companyFitObservations CompanyFitObservation[]
   leadScores         LeadScore[]
 
   @@index([organizationId, status, startedAt])
@@ -449,6 +517,7 @@ model ClaimEvidence {
 
 model LeadCandidate {
   id                  String              @id @default(uuid()) @db.Uuid
+  provenance          DataProvenance      @default(UNKNOWN)
   campaignId          String              @map("campaign_id") @db.Uuid
   organizationId      String              @map("organization_id") @db.Uuid
   status              LeadCandidateStatus @default(DISCOVERED)
@@ -464,11 +533,33 @@ model LeadCandidate {
   campaign            Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   scores              LeadScore[]
+  decisionMakerSelections DecisionMakerSelection[]
+  acceptanceDiagnosticRuns AcceptanceDiagnosticRun[]
 
   @@unique([campaignId, organizationId])
   @@index([campaignId, status, discoveredAt])
   @@index([organizationId])
   @@map("lead_candidates")
+}
+
+model AcceptanceDiagnosticRun {
+  id              String                     @id @default(uuid()) @db.Uuid
+  leadCandidateId String                     @unique @map("lead_candidate_id") @db.Uuid
+  campaignId      String                     @map("campaign_id") @db.Uuid
+  focus           String                     @db.VarChar(16)
+  inputHash       String                     @map("input_hash") @db.Char(64)
+  candidateUpdatedAt DateTime                @map("candidate_updated_at") @db.Timestamptz(6)
+  status          AcceptanceDiagnosticStatus @default(CLAIMED)
+  externalRunId   String?                    @map("external_run_id") @db.VarChar(255)
+  scoreId         String?                    @map("score_id") @db.Uuid
+  outcome         String?                    @db.VarChar(128)
+  createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  completedAt     DateTime?                  @map("completed_at") @db.Timestamptz(6)
+  leadCandidate   LeadCandidate              @relation(fields: [leadCandidateId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, createdAt])
+  @@map("acceptance_diagnostic_runs")
 }
 
 model LeadScore {
@@ -500,6 +591,7 @@ model LeadScore {
 
 model Person {
   id               String           @id @default(uuid()) @db.Uuid
+  provenance       DataProvenance   @default(UNKNOWN)
   organizationId   String           @map("organization_id") @db.Uuid
   idempotencyKey   String           @unique @map("idempotency_key") @db.Char(64)
   fullName         String           @map("full_name") @db.VarChar(240)
@@ -515,6 +607,7 @@ model Person {
   updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
   organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   roles            PersonRole[]
+  decisionMakerAssignments DecisionMakerAssignment[]
 
   @@index([organizationId, normalizedName])
   @@index([sourceProvider, sourcePersonId])
@@ -535,10 +628,48 @@ model PersonRole {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   person          Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  decisionMakerAssignments DecisionMakerAssignment[]
 
   @@index([personId, isCurrent])
   @@index([normalizedTitle])
   @@map("person_roles")
+}
+
+model DecisionMakerSelection {
+  id              String                    @id @default(uuid()) @db.Uuid
+  leadCandidateId String                    @map("lead_candidate_id") @db.Uuid
+  idempotencyKey  String                    @unique @map("idempotency_key") @db.Char(64)
+  status          DecisionMakerSelectionStatus @default(REVIEW_REQUIRED)
+  warnings        String[]                  @default([])
+  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  leadCandidate   LeadCandidate             @relation(fields: [leadCandidateId], references: [id], onDelete: Cascade)
+  assignments     DecisionMakerAssignment[]
+
+  @@index([leadCandidateId, createdAt])
+  @@map("decision_maker_selections")
+}
+
+model DecisionMakerAssignment {
+  id                     String                      @id @default(uuid()) @db.Uuid
+  selectionId            String                      @map("selection_id") @db.Uuid
+  personId               String                      @map("person_id") @db.Uuid
+  personRoleId           String                      @map("person_role_id") @db.Uuid
+  decisionMakerProfileId String                      @map("decision_maker_profile_id") @db.Uuid
+  slot                   DecisionMakerAssignmentSlot
+  rankScore              Int                         @map("rank_score")
+  components             Json
+  reasons                String[]
+  createdAt              DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  selection              DecisionMakerSelection      @relation(fields: [selectionId], references: [id], onDelete: Cascade)
+  person                 Person                      @relation(fields: [personId], references: [id], onDelete: Cascade)
+  personRole             PersonRole                  @relation(fields: [personRoleId], references: [id], onDelete: Cascade)
+  decisionMakerProfile   DecisionMakerProfile        @relation(fields: [decisionMakerProfileId], references: [id], onDelete: Restrict)
+
+  @@unique([selectionId, slot])
+  @@unique([selectionId, personId])
+  @@index([personId])
+  @@index([decisionMakerProfileId])
+  @@map("decision_maker_assignments")
 }
 
 model OutboxEvent {

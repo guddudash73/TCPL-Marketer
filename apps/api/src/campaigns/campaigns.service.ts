@@ -56,6 +56,7 @@ export class CampaignsService {
     const campaign = await this.database.client.campaign.create({
       data: {
         name: input.name,
+        provenance: "APPLICATION",
         sectorId: input.sectorId,
         createdByUserId: actorUserId,
         automationMode: input.automationMode,

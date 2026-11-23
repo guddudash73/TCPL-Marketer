@@ -11,6 +11,7 @@ import {
 import {
   ClaimExtractionSchema,
   type ClaimExtraction,
+  type ExtractedCompanyFitObservation,
   type ExtractedClaim,
 } from "@tcpl-marketer/ai-contracts";
 import { Prisma } from "@tcpl-marketer/database";
@@ -22,6 +23,11 @@ import {
 } from "@tcpl-marketer/provider-contracts";
 
 import { DatabaseService } from "../database/database.service.js";
+import { assertDiagnosticClaim } from "../acceptance/diagnostic-claim.js";
+import {
+  COMPANY_FIT_FACT_TYPES,
+  CompanyFitEvidenceService,
+} from "./company-fit-evidence.service.js";
 
 const MAX_DOCUMENTS = 25;
 const MAX_DOCUMENT_CHARACTERS = 20_000;
@@ -81,6 +87,7 @@ export interface CompanyIntelligenceProfile {
       contentHash: string;
     }>;
   }>;
+  companyFit: unknown;
 }
 
 export interface LeadCandidateResearchResult {
@@ -93,6 +100,8 @@ export class ClaimExtractionService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(CLAIM_EXTRACTOR) private readonly extractor: ClaimExtractor,
+    @Inject(CompanyFitEvidenceService)
+    private readonly companyFit: CompanyFitEvidenceService,
   ) {}
 
   async extractForOrganization(
@@ -130,7 +139,9 @@ export class ClaimExtractionService {
       documentSetHash,
       ...configuration,
     });
-    if (acquired.cached) return toProfile(acquired.run, true);
+    if (acquired.cached) {
+      return this.withCompanyFit(toProfile(acquired.run, true), organizationId);
+    }
 
     try {
       const providerRun = await this.extractAndValidate(context.request);
@@ -185,8 +196,19 @@ export class ClaimExtractionService {
             },
           });
         }
+        await this.companyFit.recordInTransaction(
+          transaction,
+          organizationId,
+          completeCompanyFitObservations(
+            providerRun.data.companyFitObservations,
+          ),
+          acquired.run.id,
+        );
       });
-      return toProfile(await this.findProfileRun(acquired.run.id), false);
+      return this.withCompanyFit(
+        toProfile(await this.findProfileRun(acquired.run.id), false),
+        organizationId,
+      );
     } catch (error) {
       await this.database.client.claimExtractionRun
         .updateMany({
@@ -208,38 +230,126 @@ export class ClaimExtractionService {
 
   async researchLeadCandidate(
     candidateId: string,
+    diagnosticRunId?: string,
+    inputHash?: string,
   ): Promise<LeadCandidateResearchResult> {
     const candidate = await this.database.client.leadCandidate.findUnique({
       where: { id: candidateId },
-      select: { id: true, organizationId: true, status: true },
+      select: { id: true, organizationId: true, status: true, updatedAt: true },
     });
     if (!candidate) throw new NotFoundException("Lead candidate not found");
-    if (["QUALIFIED", "BDE_REVIEW", "REJECTED"].includes(candidate.status)) {
+    const claim = await assertDiagnosticClaim(
+      this.database.client,
+      candidateId,
+      diagnosticRunId,
+      inputHash,
+      true,
+    );
+    if (claim && claim.candidateUpdatedAt.getTime() !== candidate.updatedAt.getTime()) {
+      throw new ConflictException(
+        "Lead candidate changed after the F001 diagnostic claim; reconcile before continuing",
+      );
+    }
+    if (
+      [
+        "ANALYSING",
+        "SCORING",
+        "QUALIFIED",
+        "BDE_REVIEW",
+        "REJECTED",
+      ].includes(candidate.status)
+    ) {
+      if (diagnosticRunId && inputHash) {
+        await this.database.client.acceptanceDiagnosticRun.updateMany({
+          where: {
+            id: diagnosticRunId,
+            leadCandidateId: candidateId,
+            status: "CLAIMED",
+            inputHash,
+          },
+          data: { candidateUpdatedAt: candidate.updatedAt },
+        });
+      }
       return {
         candidate,
         profile: await this.researchOrganization(candidate.organizationId),
       };
     }
 
-    await this.database.client.leadCandidate.updateMany({
+    const started = await this.database.client.leadCandidate.updateMany({
       where: {
         id: candidate.id,
         status: { in: ["DISCOVERED", "VALIDATING"] },
+        updatedAt: candidate.updatedAt,
       },
       data: { status: "RESEARCHING" },
     });
-    const profile = await this.researchOrganization(candidate.organizationId);
-    await this.database.client.leadCandidate.updateMany({
+    if (started.count !== 1) {
+      throw new ConflictException(
+        "Lead candidate changed before diagnostic research started",
+      );
+    }
+    const researching = await this.database.client.leadCandidate.findUniqueOrThrow({
+      where: { id: candidate.id },
+      select: { organizationId: true, status: true, updatedAt: true },
+    });
+    let profile: CompanyIntelligenceProfile;
+    try {
+      profile = await this.researchOrganization(candidate.organizationId);
+    } catch (error) {
+      await this.database.client.$transaction(async (transaction) => {
+        await transaction.leadCandidate.updateMany({
+          where: {
+            id: candidate.id,
+            status: "RESEARCHING",
+            updatedAt: researching.updatedAt,
+          },
+          data: { status: "VALIDATING" },
+        });
+        // F001 claims intentionally forbid blind replay. Make the failure
+        // explicit rather than leave a CLAIMED run with a stale snapshot.
+        if (diagnosticRunId && inputHash) {
+          await transaction.acceptanceDiagnosticRun.updateMany({
+            where: { id: diagnosticRunId, leadCandidateId: candidate.id, status: "CLAIMED", inputHash },
+            data: { status: "NEEDS_REVIEW", outcome: "RECONCILE_REQUIRED" },
+          });
+        }
+      });
+      throw error;
+    }
+    const analysed = await this.database.client.leadCandidate.updateMany({
       where: {
         id: candidate.id,
-        status: { in: ["DISCOVERED", "VALIDATING", "RESEARCHING"] },
+        status: "RESEARCHING",
+        updatedAt: researching.updatedAt,
       },
       data: { status: "ANALYSING" },
     });
+    if (analysed.count !== 1) {
+      throw new ConflictException(
+        "Lead candidate changed during diagnostic research; reconcile before continuing",
+      );
+    }
     const current = await this.database.client.leadCandidate.findUniqueOrThrow({
       where: { id: candidate.id },
-      select: { status: true },
+      select: { status: true, updatedAt: true },
     });
+    if (diagnosticRunId && inputHash) {
+      const updatedClaim = await this.database.client.acceptanceDiagnosticRun.updateMany({
+        where: {
+          id: diagnosticRunId,
+          leadCandidateId: candidateId,
+          status: "CLAIMED",
+          inputHash,
+        },
+        data: { candidateUpdatedAt: current.updatedAt },
+      });
+      if (updatedClaim.count !== 1) {
+        throw new ConflictException(
+          "F001 diagnostic claim changed during research; reconcile before continuing",
+        );
+      }
+    }
     return {
       candidate: {
         id: candidate.id,
@@ -258,7 +368,9 @@ export class ClaimExtractionService {
       orderBy: { completedAt: "desc" },
       include: profileInclude,
     });
-    if (run) return toProfile(run, true);
+    if (run) {
+      return this.withCompanyFit(toProfile(run, true), organizationId);
+    }
 
     const organization = await this.database.client.organization.findUnique({
       where: { id: organizationId },
@@ -266,6 +378,16 @@ export class ClaimExtractionService {
     });
     if (!organization) throw new NotFoundException("Organization not found");
     throw new NotFoundException("No completed company research profile found");
+  }
+
+  private async withCompanyFit(
+    profile: Omit<CompanyIntelligenceProfile, "companyFit">,
+    organizationId: string,
+  ): Promise<CompanyIntelligenceProfile> {
+    return {
+      ...profile,
+      companyFit: await this.companyFit.getProfile(organizationId),
+    };
   }
 
   private async loadContext(organizationId: string): Promise<{
@@ -279,7 +401,7 @@ export class ClaimExtractionService {
         name: true,
         sources: {
           where: { webDocument: { isNot: null } },
-          orderBy: { capturedAt: "desc" },
+          orderBy: [{ capturedAt: "desc" }, { id: "desc" }],
           take: MAX_DOCUMENTS,
           select: {
             id: true,
@@ -295,6 +417,7 @@ export class ClaimExtractionService {
 
     const bounded = boundedDocuments(organization.sources);
     if (bounded.documents.length === 0) {
+      await this.companyFit.recordUnknowns(organizationId);
       throw new UnprocessableEntityException(
         "No stored documents are available for claim extraction",
       );
@@ -449,7 +572,36 @@ function validateProviderRun(
       );
     }
   }
+  for (const observation of parsed.data.companyFitObservations) {
+    if (
+      !suppliedEvidenceIds.has(observation.sourceId) ||
+      observation.conflictsWithSourceIds.some(
+        (id) => !suppliedEvidenceIds.has(id),
+      )
+    ) {
+      throw new BadGatewayException(
+        "Claim provider returned an unknown company-fit evidence ID",
+      );
+    }
+  }
   return { ...run, data: parsed.data };
+}
+
+function completeCompanyFitObservations(
+  observations: ExtractedCompanyFitObservation[],
+) {
+  const observedTypes = new Set(observations.map(({ factType }) => factType));
+  return {
+    observations: [
+      ...observations.map((observation) => ({
+        ...observation,
+        state: "VERIFIED" as const,
+      })),
+      ...COMPANY_FIT_FACT_TYPES.filter(
+        (factType) => !observedTypes.has(factType),
+      ).map((factType) => ({ factType, state: "UNKNOWN" as const })),
+    ],
+  };
 }
 
 function canonicalClaims(
@@ -478,7 +630,7 @@ function canonicalClaims(
 function toProfile(
   run: PersistedProfileRun,
   cached: boolean,
-): CompanyIntelligenceProfile {
+): Omit<CompanyIntelligenceProfile, "companyFit"> {
   if (!run.completedAt || run.status !== "SUCCEEDED") {
     throw new ConflictException("Company research has not completed");
   }

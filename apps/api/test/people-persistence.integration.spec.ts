@@ -79,6 +79,10 @@ describe("provider-independent people persistence", () => {
     expect(
       await database.person.count({ where: { organizationId } }),
     ).toBe(1);
+    expect(await database.person.findUnique({
+      where: { id: first.person.id },
+      select: { provenance: true },
+    })).toEqual({ provenance: "APPLICATION" });
     expect(
       await database.personRole.count({ where: { personId: first.person.id } }),
     ).toBe(1);

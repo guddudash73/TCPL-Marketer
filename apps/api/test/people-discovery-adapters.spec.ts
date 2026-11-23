@@ -67,6 +67,16 @@ describe("people discovery adapters", () => {
             sourceUrl: "https://unconsulted.test/person",
             confidence: 0.5,
           },
+          {
+            fullName: "Invalid URL Person",
+            title: "Survey Director",
+            seniority: "Director",
+            departments: ["Surveying"],
+            location: null,
+            profileUrl: "not-a-url",
+            sourceUrl: "javascript:alert(1)",
+            confidence: 0.9,
+          },
         ],
       },
       output: [
@@ -101,6 +111,9 @@ describe("people discovery adapters", () => {
       expect.objectContaining({
         tool_choice: "required",
         include: ["web_search_call.action.sources"],
+        instructions: expect.stringContaining(
+          "never copy a nearby person's title",
+        ),
       }),
     );
   });

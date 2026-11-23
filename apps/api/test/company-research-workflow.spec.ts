@@ -14,8 +14,8 @@ type Workflow = {
   >;
 };
 
-describe("company research and scoring workflow", () => {
-  it("orchestrates protected NestJS research and scoring without owning business logic", async () => {
+describe("company research, scoring and people-selection workflow", () => {
+  it("orchestrates qualified-only protected NestJS calls without owning business logic", async () => {
     const workflow = JSON.parse(
       await readFile(
         new URL(
@@ -34,6 +34,11 @@ describe("company research and scoring workflow", () => {
       "Prepare Scoring Request",
       "Sign Scoring Request",
       "Score Candidate in NestJS",
+      "Qualified for People Selection?",
+      "Prepare People Selection Request",
+      "Sign People Selection Request",
+      "Select Decision Makers in NestJS",
+      "Confirm Research with People",
       "Confirm Research",
     ]);
 
@@ -55,6 +60,15 @@ describe("company research and scoring workflow", () => {
     const scoringRequest = workflow.nodes.find(
       ({ name }) => name === "Score Candidate in NestJS",
     );
+    const peoplePreparation = workflow.nodes.find(
+      ({ name }) => name === "Prepare People Selection Request",
+    );
+    const peopleSignature = workflow.nodes.find(
+      ({ name }) => name === "Sign People Selection Request",
+    );
+    const peopleRequest = workflow.nodes.find(
+      ({ name }) => name === "Select Decision Makers in NestJS",
+    );
     expect(JSON.stringify(preparation?.parameters)).toContain(
       "/internal/lead-candidates/",
     );
@@ -67,6 +81,12 @@ describe("company research and scoring workflow", () => {
       method: "POST",
       url: "={{ $env.TCPL_API_URL + $json.researchPath }}",
     });
+    expect(JSON.stringify(request?.parameters)).toContain(
+      "x-f001-diagnostic-run-id",
+    );
+    expect(JSON.stringify(request?.parameters)).toContain(
+      "x-f001-input-hash",
+    );
     expect(JSON.stringify(scoringPreparation?.parameters)).toContain(
       "/internal/lead-candidates/",
     );
@@ -80,6 +100,31 @@ describe("company research and scoring workflow", () => {
       method: "POST",
       url: "={{ $env.TCPL_API_URL + $json.scoringPath }}",
     });
+    expect(JSON.stringify(scoringRequest?.parameters)).toContain(
+      "x-f001-diagnostic-run-id",
+    );
+    expect(JSON.stringify(scoringRequest?.parameters)).toContain(
+      "x-f001-input-hash",
+    );
+    expect(JSON.stringify(peoplePreparation?.parameters)).toContain(
+      "/decision-makers",
+    );
+    expect(peopleSignature?.parameters).toMatchObject({
+      action: "hmac",
+      type: "SHA256",
+      value: "={{ $json.peopleTimestamp + '\\nPOST\\n' + $json.peoplePath }}",
+      secret: "={{ $env.N8N_SERVICE_SECRET }}",
+    });
+    expect(peopleRequest?.parameters).toMatchObject({
+      method: "POST",
+      url: "={{ $env.TCPL_API_URL + $json.peoplePath }}",
+    });
+    expect(JSON.stringify(peopleRequest?.parameters)).toContain(
+      "x-f001-diagnostic-run-id",
+    );
+    expect(JSON.stringify(peopleRequest?.parameters)).toContain(
+      "x-f001-input-hash",
+    );
 
     expect(
       workflow.connections["Company Research Requested"]?.main[0]?.[0]?.node,
@@ -89,7 +134,19 @@ describe("company research and scoring workflow", () => {
     ).toBe("Prepare Scoring Request");
     expect(
       workflow.connections["Score Candidate in NestJS"]?.main[0]?.[0]?.node,
+    ).toBe("Qualified for People Selection?");
+    expect(
+      workflow.connections["Qualified for People Selection?"]?.main[0]?.[0]
+        ?.node,
+    ).toBe("Prepare People Selection Request");
+    expect(
+      workflow.connections["Qualified for People Selection?"]?.main[1]?.[0]
+        ?.node,
     ).toBe("Confirm Research");
+    expect(
+      workflow.connections["Select Decision Makers in NestJS"]?.main[0]?.[0]
+        ?.node,
+    ).toBe("Confirm Research with People");
     expect(
       workflow.nodes.some(({ type }) =>
         /openai|postgres|prisma|database/i.test(type),

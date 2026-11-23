@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Param, Post, UseGuards } from "@nestjs/common";
+import { Controller, Get, Headers, Inject, Param, Post, UseGuards } from "@nestjs/common";
 import { z } from "zod";
 
 import { Public } from "../auth/public.decorator.js";
@@ -17,8 +17,12 @@ export class InternalScoringController {
   ) {}
 
   @Post(":id/score")
-  score(@Param("id", { schema: candidateIdSchema }) id: string): Promise<unknown> {
-    return this.scoring.scoreLeadCandidate(id);
+  score(
+    @Param("id", { schema: candidateIdSchema }) id: string,
+    @Headers("x-f001-diagnostic-run-id") diagnosticRunId?: string,
+    @Headers("x-f001-input-hash") inputHash?: string,
+  ): Promise<unknown> {
+    return this.scoring.scoreLeadCandidate(id, diagnosticRunId, inputHash);
   }
 
   @Get(":id/score")

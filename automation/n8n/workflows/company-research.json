@@ -78,6 +78,14 @@
             {
               "name": "x-service-signature",
               "value": "={{ $json.data }}"
+            },
+            {
+              "name": "x-f001-diagnostic-run-id",
+              "value": "={{ $('Company Research Requested').item.json.body.diagnosticRunId || '' }}"
+            },
+            {
+              "name": "x-f001-input-hash",
+              "value": "={{ $('Company Research Requested').item.json.body.inputHash || '' }}"
             }
           ]
         },
@@ -144,6 +152,14 @@
             {
               "name": "x-service-signature",
               "value": "={{ $json.data }}"
+            },
+            {
+              "name": "x-f001-diagnostic-run-id",
+              "value": "={{ $('Company Research Requested').item.json.body.diagnosticRunId || '' }}"
+            },
+            {
+              "name": "x-f001-input-hash",
+              "value": "={{ $('Company Research Requested').item.json.body.inputHash || '' }}"
             }
           ]
         },
@@ -157,15 +173,132 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "qualified-lead",
+              "leftValue": "={{ $json.result.qualified }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-qualified-for-people",
+      "name": "Qualified for People Selection?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1200, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "people-timestamp",
+              "name": "peopleTimestamp",
+              "value": "={{ Date.now().toString() }}",
+              "type": "string"
+            },
+            {
+              "id": "people-path",
+              "name": "peoplePath",
+              "value": "={{ '/internal/lead-candidates/' + $json.leadCandidateId + '/decision-makers' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "prepare-people-request",
+      "name": "Prepare People Selection Request",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1440, -120]
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.peopleTimestamp + '\\nPOST\\n' + $json.peoplePath }}",
+        "secret": "={{ $env.N8N_SERVICE_SECRET }}",
+        "encoding": "hex"
+      },
+      "id": "sign-people-request",
+      "name": "Sign People Selection Request",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [1680, -120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TCPL_API_URL + $json.peoplePath }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-service-timestamp",
+              "value": "={{ $json.peopleTimestamp }}"
+            },
+            {
+              "name": "x-service-signature",
+              "value": "={{ $json.data }}"
+            },
+            {
+              "name": "x-f001-diagnostic-run-id",
+              "value": "={{ $('Company Research Requested').item.json.body.diagnosticRunId || '' }}"
+            },
+            {
+              "name": "x-f001-input-hash",
+              "value": "={{ $('Company Research Requested').item.json.body.inputHash || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "select-decision-makers",
+      "name": "Select Decision Makers in NestJS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1920, -120]
+    },
+    {
+      "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { executionId: $execution.id, research: $('Research Company in NestJS').item.json, scoring: $json } }}",
+        "responseBody": "={{ { executionId: $execution.id, research: $('Research Company in NestJS').item.json, scoring: $('Score Candidate in NestJS').item.json, people: $json } }}",
+        "options": {}
+      },
+      "id": "confirm-research-with-people",
+      "name": "Confirm Research with People",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2160, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { executionId: $execution.id, research: $('Research Company in NestJS').item.json, scoring: $json, people: null } }}",
         "options": {}
       },
       "id": "confirm-research",
       "name": "Confirm Research",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
-      "position": [1200, 0]
+      "position": [1440, 120]
     }
   ],
   "pinData": {},
@@ -189,14 +322,29 @@
       "main": [[{"node": "Score Candidate in NestJS", "type": "main", "index": 0}]]
     },
     "Score Candidate in NestJS": {
-      "main": [[{"node": "Confirm Research", "type": "main", "index": 0}]]
+      "main": [[{"node": "Qualified for People Selection?", "type": "main", "index": 0}]]
+    },
+    "Qualified for People Selection?": {
+      "main": [
+        [{"node": "Prepare People Selection Request", "type": "main", "index": 0}],
+        [{"node": "Confirm Research", "type": "main", "index": 0}]
+      ]
+    },
+    "Prepare People Selection Request": {
+      "main": [[{"node": "Sign People Selection Request", "type": "main", "index": 0}]]
+    },
+    "Sign People Selection Request": {
+      "main": [[{"node": "Select Decision Makers in NestJS", "type": "main", "index": 0}]]
+    },
+    "Select Decision Makers in NestJS": {
+      "main": [[{"node": "Confirm Research with People", "type": "main", "index": 0}]]
     }
   },
   "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "7b4a2e30-e107-4c83-b7ea-d014d000001",
+  "versionId": "7b4a2e30-e107-4c83-b7ea-d016000001",
   "meta": {
     "templateCredsSetupCompleted": false
   },

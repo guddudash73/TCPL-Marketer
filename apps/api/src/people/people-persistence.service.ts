@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
   PersonCandidateSchema,
   type PersonCandidate,
@@ -30,7 +30,9 @@ export interface PersistedPersonCandidate {
 
 @Injectable()
 export class PeoplePersistenceService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+  ) {}
 
   async persistCandidate(
     organizationId: string,
@@ -51,6 +53,7 @@ export class PeoplePersistenceService {
         where: { idempotencyKey },
         create: {
           organizationId,
+          provenance: "APPLICATION",
           idempotencyKey,
           fullName: candidate.fullName,
           normalizedName: candidate.normalizedName,

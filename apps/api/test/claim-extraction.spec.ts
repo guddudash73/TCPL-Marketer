@@ -39,6 +39,7 @@ describe("structured claim extraction", () => {
             evidenceIds: [evidenceId],
           },
         ],
+        companyFitObservations: [],
       }),
     ).toEqual({
       claims: [
@@ -48,12 +49,14 @@ describe("structured claim extraction", () => {
           evidenceIds: [evidenceId],
         },
       ],
+      companyFitObservations: [],
     });
     expect(() =>
       ClaimExtractionSchema.parse({
         claims: [
           { statement: "Unsupported", type: "OTHER", evidenceIds: [] },
         ],
+        companyFitObservations: [],
       }),
     ).toThrow();
   });
@@ -76,6 +79,7 @@ describe("structured claim extraction", () => {
             evidenceIds: [evidenceId],
           },
         ],
+        companyFitObservations: [],
       },
       usage: { input_tokens: 120, output_tokens: 40, total_tokens: 160 },
     });
@@ -90,7 +94,7 @@ describe("structured claim extraction", () => {
     expect(run.data.claims[0]?.evidenceIds).toEqual([evidenceId]);
     expect(run.prompt).toEqual({
       name: "company-claim-extraction",
-      version: "v2",
+      version: "v3",
     });
     const providerInput = parse.mock.calls[0]?.[0] as {
       instructions: string;
@@ -98,6 +102,8 @@ describe("structured claim extraction", () => {
     };
     expect(providerInput.instructions).toContain("untrusted data");
     expect(providerInput.instructions).toContain("subcontractor search");
+    expect(providerInput.instructions).toContain("visible team cards");
+    expect(providerInput.instructions).toContain("missing LinkedIn page");
     expect(providerInput.instructions).not.toContain(injection);
     expect(providerInput.input).toContain("BEGIN_UNTRUSTED_COMPANY_DOCUMENTS");
     expect(providerInput.input).toContain(injection);
@@ -119,6 +125,7 @@ describe("structured claim extraction", () => {
             evidenceIds: [randomUUID()],
           },
         ],
+        companyFitObservations: [],
       },
     });
     const adapter = new OpenAIClaimExtractionAdapter({
@@ -155,10 +162,11 @@ describe("structured claim extraction", () => {
             evidenceIds: [evidenceId],
           },
         ],
+        companyFitObservations: [],
       },
       model: "test-research-model",
       providerResponseId: "resp-stored",
-      prompt: { name: "company-claim-extraction", version: "v1" },
+      prompt: { name: "company-claim-extraction", version: "v3" },
       usage: null,
     });
     const service = new ClaimExtractionService(
@@ -167,10 +175,11 @@ describe("structured claim extraction", () => {
         getConfiguration: () => ({
           provider: "openai",
           model: "test-research-model",
-          prompt: { name: "company-claim-extraction", version: "v1" },
+          prompt: { name: "company-claim-extraction", version: "v3" },
         }),
         extract,
       } as ClaimExtractor,
+      { getProfile: vi.fn() } as never,
     );
 
     const result = await service.extractForOrganization(organizationId);

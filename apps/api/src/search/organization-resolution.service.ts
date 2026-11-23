@@ -137,6 +137,7 @@ export class OrganizationResolutionService {
         },
         create: {
           campaignId,
+          provenance: "APPLICATION",
           organizationId: organization.id,
           idempotencyKey: `discovery:${campaignId}:${organization.id}`,
           sourceUrl: result.sourceUrl,

@@ -68,10 +68,53 @@ export const ExtractedClaimSchema = z.object({
   evidenceIds: z.array(z.string().trim().min(1).max(100)).min(1).max(10),
 });
 
+const companyFitEvidenceShape = {
+  sourceId: z.string().trim().min(1).max(100),
+  evidenceExcerpt: z.string().trim().min(1).max(1_000),
+  confidence: z.number().finite().min(0).max(1),
+  conflictsWithSourceIds: z
+    .array(z.string().trim().min(1).max(100))
+    .max(10),
+};
+
+export const ExtractedHeadcountObservationSchema = z
+  .object({
+    factType: z.literal("HEADCOUNT"),
+    minimum: z.number().int().min(0).max(10_000_000),
+    maximum: z.number().int().min(0).max(10_000_000),
+    ...companyFitEvidenceShape,
+  })
+  .refine(({ minimum, maximum }) => minimum <= maximum, {
+    message: "Headcount minimum must not exceed maximum",
+    path: ["maximum"],
+  });
+
+export const ExtractedGeographyObservationSchema = z.object({
+  factType: z.literal("GEOGRAPHY"),
+  value: z.string().trim().min(1).max(320),
+  ...companyFitEvidenceShape,
+});
+
+export const ExtractedBusinessModelObservationSchema = z.object({
+  factType: z.literal("BUSINESS_MODEL"),
+  value: z.string().trim().min(1).max(500),
+  ...companyFitEvidenceShape,
+});
+
+export const ExtractedCompanyFitObservationSchema = z.union([
+  ExtractedHeadcountObservationSchema,
+  ExtractedGeographyObservationSchema,
+  ExtractedBusinessModelObservationSchema,
+]);
+
 export const ClaimExtractionSchema = z.object({
   claims: z.array(ExtractedClaimSchema).max(50),
+  companyFitObservations: z.array(ExtractedCompanyFitObservationSchema).max(50),
 });
 
 export type ClaimExtraction = z.infer<typeof ClaimExtractionSchema>;
 export type ExtractedClaim = z.infer<typeof ExtractedClaimSchema>;
 export type ClaimType = z.infer<typeof ClaimTypeSchema>;
+export type ExtractedCompanyFitObservation = z.infer<
+  typeof ExtractedCompanyFitObservationSchema
+>;
