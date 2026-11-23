@@ -28,6 +28,8 @@ export interface StageRunRecord {
   lastError: string | null;
   outcome: string | null;
   outcomeReason: string | null;
+  /** Stored output of a finished run, returned on an idempotent replay. */
+  result: unknown;
   startedAt: Date | null;
   completedAt: Date | null;
   createdAt: Date;
@@ -60,6 +62,8 @@ export interface FinishInput {
   status: FinishStatus;
   outcome: string;
   reason?: string;
+  /** JSON-serializable output kept for idempotent replays. */
+  result?: unknown;
 }
 
 const RUN_COLUMNS = `
@@ -77,6 +81,7 @@ const RUN_COLUMNS = `
   last_error AS "lastError",
   outcome,
   outcome_reason AS "outcomeReason",
+  result,
   started_at AS "startedAt",
   completed_at AS "completedAt",
   created_at AS "createdAt",
@@ -229,6 +234,7 @@ export class StageRunService {
               outcome = $4,
               outcome_reason = $5::text,
               last_error = CASE WHEN $3::text = 'FAILED' THEN $5::text ELSE NULL END,
+              result = $6::jsonb,
               lease_owner = NULL,
               lease_expires_at = NULL,
               completed_at = now(),
@@ -243,6 +249,7 @@ export class StageRunService {
       input.status,
       input.outcome.slice(0, 128),
       input.reason ?? null,
+      input.result === undefined ? null : JSON.stringify(input.result),
     );
     const finished = rows[0];
     if (!finished) {
@@ -275,6 +282,24 @@ export class StageRunService {
       runId,
       leaseOwner,
       reason.slice(0, 2_000),
+    );
+    return rows.length === 1;
+  }
+
+  /** Reclaims one run if, and only if, its lease has expired. */
+  async reclaimIfExpired(runId: string): Promise<boolean> {
+    const rows = await this.database.client.$queryRawUnsafe<Array<{ id: string }>>(
+      `UPDATE stage_runs
+          SET status = 'PENDING'::"StageRunStatus",
+              lease_owner = NULL,
+              lease_expires_at = NULL,
+              last_error = 'Lease expired before the stage run finished',
+              updated_at = now()
+        WHERE id = $1::uuid
+          AND status = 'RUNNING'::"StageRunStatus"
+          AND lease_expires_at < now()
+        RETURNING id`,
+      runId,
     );
     return rows.length === 1;
   }

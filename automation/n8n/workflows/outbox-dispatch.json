@@ -1,0 +1,111 @@
+{
+  "id": "PH101bOutboxDispatch",
+  "name": "TCPL Outbox Dispatch Tick",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "dispatch-schedule",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "dispatch-timestamp",
+              "name": "serviceTimestamp",
+              "value": "={{ Date.now().toString() }}",
+              "type": "string"
+            },
+            {
+              "id": "dispatch-path",
+              "name": "dispatchPath",
+              "value": "/internal/orchestration/dispatch",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-dispatch-request",
+      "name": "Prepare Dispatch Request",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.serviceTimestamp + '\\nPOST\\n' + $json.dispatchPath }}",
+        "secret": "={{ $env.N8N_SERVICE_SECRET }}",
+        "encoding": "hex"
+      },
+      "id": "sign-dispatch-request",
+      "name": "Sign Dispatch Request",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TCPL_API_URL + $json.dispatchPath }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-service-timestamp",
+              "value": "={{ $json.serviceTimestamp }}"
+            },
+            {
+              "name": "x-service-signature",
+              "value": "={{ $json.data }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 200000
+        }
+      },
+      "id": "run-dispatch-tick",
+      "name": "Run Dispatch Tick in NestJS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every Minute": {
+      "main": [[{ "node": "Prepare Dispatch Request", "type": "main", "index": 0 }]]
+    },
+    "Prepare Dispatch Request": {
+      "main": [[{ "node": "Sign Dispatch Request", "type": "main", "index": 0 }]]
+    },
+    "Sign Dispatch Request": {
+      "main": [[{ "node": "Run Dispatch Tick in NestJS", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9c1f6d52-3b7e-4a10-8e21-a10b10000001",
+  "meta": {
+    "templateCredsSetup": false
+  },
+  "tags": []
+}

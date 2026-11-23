@@ -6,14 +6,9 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import {
-  ORCHESTRATION_GATEWAY,
-  type OrchestrationEvent,
-  type OrchestrationGateway,
-} from "@tcpl-marketer/orchestration-contracts";
-
 import { requireCampaignTransition } from "../campaigns/campaign-state-machine.js";
 import { DatabaseService } from "../database/database.service.js";
+import { OutboxDispatcherService } from "./outbox-dispatcher.service.js";
 
 const CAMPAIGN_STARTED = "CAMPAIGN_STARTED";
 
@@ -21,8 +16,8 @@ const CAMPAIGN_STARTED = "CAMPAIGN_STARTED";
 export class OrchestrationService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
-    @Inject(ORCHESTRATION_GATEWAY)
-    private readonly gateway: OrchestrationGateway,
+    @Inject(OutboxDispatcherService)
+    private readonly dispatcher: OutboxDispatcherService,
   ) {}
 
   async startCampaign(id: string, actorUserId: string): Promise<unknown> {
@@ -31,74 +26,41 @@ export class OrchestrationService {
     if (dispatch.event.status === "PUBLISHED") {
       return dispatch;
     }
+    if (dispatch.event.status === "DEAD_LETTER") {
+      throw new ConflictException(
+        "Campaign start failed permanently and needs an operator retry",
+      );
+    }
 
-    const event: OrchestrationEvent = {
-      id: dispatch.event.id,
-      eventType: dispatch.event.eventType,
-      aggregateType: dispatch.event.aggregateType,
-      aggregateId: dispatch.event.aggregateId,
-      payload: dispatch.event.payload as Record<string, unknown>,
-      createdAt: dispatch.event.createdAt.toISOString(),
-    };
-
-    try {
-      const result = await this.gateway.publish(event);
-      return await this.database.client.$transaction(async (transaction) => {
-        const now = new Date();
-        const publishedEvent = await transaction.outboxEvent.update({
-          where: { id: event.id },
-          data: {
-            status: "PUBLISHED",
-            attempts: { increment: 1 },
-            publishedAt: now,
-            lastError: null,
-          },
-        });
-        const automationRun = await transaction.automationRun.update({
-          where: { outboxEventId: event.id },
-          data: {
-            status: "RUNNING",
-            attempts: { increment: 1 },
-            externalRunId: result.externalRunId,
-            startedAt: now,
-            lastError: null,
-          },
-        });
-        const campaign = await transaction.campaign.update({
-          where: { id, status: "STARTING" },
-          data: { status: "RUNNING" },
-        });
-        await transaction.auditLog.create({
-          data: {
-            action: "campaign.started",
-            resourceType: "campaign",
-            resourceId: id,
-            actorUserId,
-            metadata: { outboxEventId: event.id, automationRunId: automationRun.id },
-          },
-        });
-        return { campaign, event: publishedEvent, automationRun };
-      });
-    } catch (error) {
-      const message = safeErrorMessage(error);
-      await this.database.client.$transaction([
-        this.database.client.outboxEvent.update({
-          where: { id: event.id },
-          data: { attempts: { increment: 1 }, lastError: message },
-        }),
-        this.database.client.automationRun.update({
-          where: { outboxEventId: event.id },
-          data: {
-            status: "FAILED",
-            attempts: { increment: 1 },
-            lastError: message,
-          },
-        }),
-      ]);
+    // A user asking again is an explicit retry, so it does not wait for backoff.
+    const outcome = await this.dispatcher.dispatchEvent(dispatch.event.id, {
+      ignoreBackoff: true,
+    });
+    if (outcome.kind === "RETRY_SCHEDULED") {
       throw new BadGatewayException(
         "Campaign start was recorded and remains pending orchestration retry",
       );
     }
+    if (outcome.kind === "DEAD_LETTERED") {
+      throw new ConflictException(
+        "Campaign start failed permanently and needs an operator retry",
+      );
+    }
+    if (outcome.kind === "HELD") {
+      throw new ConflictException("Campaign cannot be dispatched in its current state");
+    }
+    return this.readDispatchState(id, dispatch.event.id);
+  }
+
+  private async readDispatchState(campaignId: string, eventId: string) {
+    const [campaign, event, automationRun] = await Promise.all([
+      this.database.client.campaign.findUniqueOrThrow({ where: { id: campaignId } }),
+      this.database.client.outboxEvent.findUniqueOrThrow({ where: { id: eventId } }),
+      this.database.client.automationRun.findUnique({
+        where: { outboxEventId: eventId },
+      }),
+    ]);
+    return { campaign, event, automationRun };
   }
 
   async getCampaignContext(id: string): Promise<unknown> {
@@ -183,9 +145,4 @@ export class OrchestrationService {
       return { campaign: { ...campaign, status: "STARTING" }, event, automationRun };
     });
   }
-}
-
-function safeErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message.slice(0, 2_000);
-  return "Unknown orchestration error";
 }

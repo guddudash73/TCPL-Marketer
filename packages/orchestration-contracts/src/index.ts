@@ -22,4 +22,12 @@ export interface OrchestrationGateway {
   cancel(reference: string): Promise<void>;
 }
 
+/** The gateway has no route for this event type. Retrying cannot help. */
+export class UnroutableOrchestrationEventError extends Error {
+  constructor(eventType: string) {
+    super(`No orchestration route is configured for event type ${eventType}`);
+    this.name = "UnroutableOrchestrationEventError";
+  }
+}
+
 export * from "./stages.js";

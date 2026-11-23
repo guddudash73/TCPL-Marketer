@@ -48,6 +48,14 @@ independent inspection.
 The outbound n8n call uses an HMAC-SHA256 signature over
 `<timestamp>\n<method>\n<path>`. NestJS rejects stale or invalid signatures.
 
+## Outbox dispatch tick
+
+`outbox-dispatch.json` runs every minute, signs a request and calls `POST /internal/orchestration/dispatch`. NestJS decides what is due, retries, and records every outcome; the workflow holds no business logic.
+
+**Keep this workflow inactive and `OUTBOX_DISPATCH_ENABLED=false` until PH1-03 adds provider spend caps.** Turning it on would retry any pending events, including two stuck September campaign starts in the dev database, which would make paid OpenAI calls (FND-027). Campaigns started by a user still dispatch immediately without this workflow.
+
+To check it locally without spending, build the API and run `apps/api/test/n8n-dispatch-local-smoke.mjs` against a disposable database; the file header has the command.
+
 ## Company research
 
 `company-research.json` is the controlled research-to-scoring-to-people-selection orchestration

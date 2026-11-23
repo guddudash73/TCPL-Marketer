@@ -1,9 +1,20 @@
-import { Controller, Get, Inject, Param, Post, UseGuards } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Post,
+  Res,
+  UseGuards,
+} from "@nestjs/common";
 
 import { Public } from "../auth/public.decorator.js";
 import { campaignIdSchema } from "../campaigns/campaign.schemas.js";
 import { ServiceAuthGuard } from "../common/service-auth.guard.js";
-import { SearchService } from "../search/search.service.js";
+import {
+  DiscoveryStageService,
+  isDiscoveryInProgress,
+} from "./discovery-stage.service.js";
 import { OrchestrationService } from "./orchestration.service.js";
 
 @Controller("internal/campaigns")
@@ -13,7 +24,8 @@ export class InternalOrchestrationController {
   constructor(
     @Inject(OrchestrationService)
     private readonly orchestration: OrchestrationService,
-    @Inject(SearchService) private readonly search: SearchService,
+    @Inject(DiscoveryStageService)
+    private readonly discovery: DiscoveryStageService,
   ) {}
 
   @Get(":id/context")
@@ -24,9 +36,12 @@ export class InternalOrchestrationController {
   }
 
   @Post(":id/prepare-discovery")
-  prepareDiscovery(
+  async prepareDiscovery(
     @Param("id", { schema: campaignIdSchema }) id: string,
+    @Res({ passthrough: true }) response: { status(code: number): unknown },
   ): Promise<unknown> {
-    return this.search.prepareDiscovery(id);
+    const result = await this.discovery.run(id);
+    if (isDiscoveryInProgress(result)) response.status(202);
+    return result;
   }
 }

@@ -3,16 +3,27 @@ import {
   Injectable,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import type {
-  OrchestrationEvent,
-  OrchestrationGateway,
-  PublishResult,
+import {
+  UnroutableOrchestrationEventError,
+  type OrchestrationEvent,
+  type OrchestrationEventType,
+  type OrchestrationGateway,
+  type PublishResult,
 } from "@tcpl-marketer/orchestration-contracts";
+
+/** Each event type needs an explicit webhook; later stages add theirs in their own tasks. */
+const EVENT_WEBHOOKS: Partial<Record<OrchestrationEventType, string>> = {
+  CAMPAIGN_STARTED: "campaign-start",
+};
 
 @Injectable()
 export class N8nOrchestrationAdapter implements OrchestrationGateway {
-  publish(event: OrchestrationEvent): Promise<PublishResult> {
-    return this.post("campaign-start", { event });
+  async publish(event: OrchestrationEvent): Promise<PublishResult> {
+    const webhookPath = EVENT_WEBHOOKS[event.eventType as OrchestrationEventType];
+    if (!webhookPath) {
+      throw new UnroutableOrchestrationEventError(event.eventType);
+    }
+    return this.post(webhookPath, { event }, { "x-idempotency-key": event.id });
   }
 
   schedule(
@@ -32,6 +43,7 @@ export class N8nOrchestrationAdapter implements OrchestrationGateway {
   private async post(
     webhookPath: string,
     body: Record<string, unknown>,
+    extraHeaders: Record<string, string> = {},
   ): Promise<PublishResult> {
     const baseUrl = process.env.N8N_BASE_URL;
     const secret = process.env.N8N_SERVICE_SECRET;
@@ -50,6 +62,7 @@ export class N8nOrchestrationAdapter implements OrchestrationGateway {
           headers: {
             authorization: `Bearer ${secret}`,
             "content-type": "application/json",
+            ...extraHeaders,
           },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(n8nRequestTimeoutMilliseconds()),

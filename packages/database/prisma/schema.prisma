@@ -755,6 +755,7 @@ model StageRun {
   lastError      String?        @map("last_error") @db.Text
   outcome        String?        @db.VarChar(128)
   outcomeReason  String?        @map("outcome_reason") @db.Text
+  result         Json?
   startedAt      DateTime?      @map("started_at") @db.Timestamptz(6)
   completedAt    DateTime?      @map("completed_at") @db.Timestamptz(6)
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)

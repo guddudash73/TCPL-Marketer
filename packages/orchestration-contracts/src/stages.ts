@@ -206,7 +206,14 @@ export function requireStageTransition(
 /** Read-only view of campaign state used when a stage run is claimed. */
 export const CAMPAIGN_STATE_READER = Symbol("CAMPAIGN_STATE_READER");
 
+/**
+ * DISPATCHABLE: work may run. HOLD: keep the work and check again later.
+ * TERMINAL: the campaign will not run this work. MISSING: no such campaign.
+ */
+export type CampaignDispatchState = "DISPATCHABLE" | "HOLD" | "TERMINAL" | "MISSING";
+
 export interface CampaignStateReader {
   /** True only while work for the campaign may be dispatched. */
   isDispatchable(campaignId: string): Promise<boolean>;
+  getDispatchState(campaignId: string): Promise<CampaignDispatchState>;
 }
