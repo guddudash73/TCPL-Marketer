@@ -2,7 +2,7 @@
 
 ## Current boundary — Day 5
 
-The existing campaign-start and company-research workflows are separate controlled slices, not the complete automatic campaign-to-BDE pipeline. A001–A010, E/I/B integration tasks and T006 must prove durable progression, recovery and deployed-version parity. D015/D016 business acceptance is REVIEW. See [baseline audit](../../docs/planning/BASELINE_AUDIT_2026-10-05.md).
+The existing campaign-start and company-research workflows are separate controlled slices, not the complete automatic campaign-to-BDE pipeline. PH1-01, PH1-07, PH1-09, PH1-20, PH2-12, PH2-17 and PH4-08 must prove durable progression, recovery and deployed-version parity. Business acceptance of qualification and people discovery is PH1-25 (Checkpoint 1). See [baseline audit](../../docs/planning/BASELINE_AUDIT_2026-10-05.md).
 
 Inspect existing workflow ID/version/credentials before updating. Update an existing matching workflow in place; import only when absent. Do not disconnect/recreate credentials or add a duplicate just to repeat setup. Any browser automation attachment must be disconnected after verification.
 
@@ -71,7 +71,7 @@ a resolved `reviewUrl`. Review the latest persisted selection with the same
 HMAC authentication at
 `GET /internal/lead-candidates/:id/decision-makers`.
 
-Current code assigns `companySizeFit = 0` to all candidates, not only the demo organization. This avoids inventing headcount but does not implement size-aware ranking; F002/F008 own the missing evidence and behavior. The current three-slot COMPLETE rule is not proof of buying authority; F007/F008 must verify relevance and allow explicit incomplete/review outcomes rather than force-fill slots.
+Current code assigns `companySizeFit = 0` to all candidates, not only the demo organization. This avoids inventing headcount but does not implement size-aware ranking; PH1-14 owns the size-aware ranking behavior (F002 supplied the verified-size evidence). The current three-slot COMPLETE rule is not proof of buying authority; PH1-13 and PH1-14 must verify relevance and allow explicit incomplete/review outcomes rather than force-fill slots.
 
 On a fresh n8n installation only, import and publish this workflow with the
 same `TCPL NestJS Service` Header Auth credential used by

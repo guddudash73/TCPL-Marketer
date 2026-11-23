@@ -2,16 +2,17 @@
 
 Lead generation and sales automation platform under development. **The full end-to-end V1 is not yet implemented or production-approved.**
 
-## Current boundary (Day 5 audit)
+## Current boundary (restructured 2026-11-23)
 
-Existing foundations include authentication/configuration, campaign creation/start, company discovery and normalization, protected website crawling, source-backed extraction, scoring, public/Apollo people adapters and persisted selection. D015/D016 business acceptance is reopened REVIEW: fixture runs do not prove fresh campaign qualification and people discovery.
+Existing foundations include authentication/configuration, campaign creation/start, company discovery and normalization, protected website crawling, source-backed extraction, scoring, public/Apollo people adapters and persisted selection. Business acceptance of company qualification and people discovery is owned by PH1-25 and Checkpoint 1: earlier fixture runs do not prove fresh-campaign qualification or unseeded people discovery.
 
 Remaining tracked work includes autonomous stage progression/recovery, complete contact/suppression/outreach, Gmail/follow-ups/reply-stop, BDE/CRM, full operator UI, metrics and production infrastructure. See [baseline audit](docs/planning/BASELINE_AUDIT_2026-10-05.md), not a feature list presented as already shipped.
 
 ## Delivery controls
 
 - [Product specification](PROJECT_PLAN.md)
-- [Dated roadmap and capacity warning](DELIVERY_ROADMAP.md): pilot target Day 11; production target Day 18, conditional on evidence and approval
+- [Sequential roadmap](DELIVERY_ROADMAP.md): Checkpoint 1 (verified company, decision-maker and business email), Checkpoint 2 (automatic email and reply engine), then completion, pilot and production; no calendar commitment
+- [Task completion contract](docs/planning/TASK_COMPLETION_CONTRACT.md) and [findings register](docs/planning/FINDINGS_REGISTER.md): no task may leave work behind
 - [Tracker](project_tasks.csv) and [bounded task details](docs/planning/TASK_DETAILS.md)
 - [Requirement ownership](docs/planning/V1_REQUIREMENTS_COVERAGE.md) and [quality gates](QUALITY_GATES.md)
 - [Setup](SETUP.md), [accounts](ENVIRONMENT_SETUP.md), [manual V1 walkthrough](DEMO_SCRIPT.md)
@@ -71,9 +72,9 @@ node infrastructure/scripts/validate-project-plan.mjs
 
 Read [n8n setup](automation/n8n/README.md) before touching existing workflows. Inspect current workflow identity/version and update the existing definition; do not blindly create duplicate imports.
 
-Day3/day4/day5 live scripts can spend provider credits or mutate fixtures. Inspect first. D015/D016 runner outputs are historical component evidence, not full business acceptance.
+Day3/day4/day5 live scripts can spend provider credits or mutate fixtures. Inspect first. D015/D016 runner outputs are historical component evidence; business acceptance is PH1-25 (Checkpoint 1).
 
-Required email policy in development/rehearsal is TEST_OVERRIDE with a controlled internal mailbox and MANUAL_REVIEW. The complete enforcement still requires E/I task implementation and verification; environment values alone are not proof of safety. Never send real-prospect email or deploy without explicit authorization.
+Required email policy in development/rehearsal is TEST_OVERRIDE with a controlled internal mailbox and MANUAL_REVIEW. The complete enforcement still requires Phase 2 implementation and verification (PH2-10, PH2-11); environment values alone are not proof of safety. Never send real-prospect email or deploy without explicit authorization.
 
 Keep credentials/OAuth tokens outside Git and logs; protect internal endpoints, n8n editor and database. Material claims need stored evidence. Reply handling must cancel follow-ups before AI classification.
 

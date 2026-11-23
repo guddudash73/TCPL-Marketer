@@ -21,3 +21,5 @@ export interface OrchestrationGateway {
   ): Promise<PublishResult>;
   cancel(reference: string): Promise<void>;
 }
+
+export * from "./stages.js";

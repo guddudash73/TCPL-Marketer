@@ -2,6 +2,16 @@ packages:
   - 'apps/*'
   - 'packages/*'
 overrides:
+  # Security overrides added by PH0-04 (2026-11-23); each pins the first patched release of an advisory reported by pnpm audit.
+  'source-map-js@<1.2.2': 1.2.2
+  'vite@>=7.0.0 <=7.3.6': 7.3.7
+  'zod@>=4.0.0 <4.6.6': 4.6.7
+  'body-parser@>=2.0.0 <2.4.0': 2.4.0
+  'qs@>=6.7.0 <=6.16.0': 6.16.1
+  'undici@>=7.0.0 <7.30.1': 7.30.1
+  'fast-uri@>=3.0.0 <3.1.9': 3.1.9
+  'effect@<=3.22.0': 3.22.1
+  'minimatch@>=7.0.0 <11.0.1': 11.0.1
   '@prisma/config@7.10.0>deepmerge-ts': 8.0.2
   'prisma@7.10.0>mysql2': 3.24.4
 audit:
