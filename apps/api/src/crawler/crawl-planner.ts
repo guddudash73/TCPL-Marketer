@@ -24,7 +24,7 @@ export type CrawlPlan = {
   pageUrls: string[];
 };
 
-type PageReader = (url: string) => Promise<SafePage>;
+export type PageReader = (url: string) => Promise<SafePage>;
 
 function sameOriginUrl(value: string, origin: string): string | undefined {
   try {

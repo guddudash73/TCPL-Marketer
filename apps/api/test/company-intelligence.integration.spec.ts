@@ -62,6 +62,8 @@ describe("company intelligence persistence and protected API", () => {
         name: "D014c Company Intelligence",
         sectorId,
         createdByUserId: userId,
+        // Provider work is refused for a campaign that is not running (PH1-03b).
+        status: "RUNNING",
         researchDepth: "STANDARD",
         countries: ["United States"],
         targetLeadCount: 1,
@@ -591,6 +593,13 @@ describe("company intelligence persistence and protected API", () => {
   it.each(["timeout", "rate-limit", "refusal", "malformed", "unsupported-evidence"])("rolls back a fresh candidate on %s and retries without duplicate facts", async (failure) => {
     vi.restoreAllMocks();
     // Each case uses a fresh candidate and a fresh document-set hash.
+    const since = new Date();
+    // The campaign start event is the run: provider calls of this candidate count toward its run cap.
+    const startEvent = await database.outboxEvent.upsert({
+      where: { idempotencyKey: `campaign-start:${campaignId}` },
+      update: {},
+      create: { eventType: "CAMPAIGN_STARTED", aggregateType: "campaign", aggregateId: campaignId, idempotencyKey: `campaign-start:${campaignId}`, payload: { campaignId } },
+    });
     const text = `D014c No Document Company employs 37 employees. Attempt ${failure}.`;
     await database.leadCandidate.update({ where: { id: noDocumentCandidateId }, data: { status: "VALIDATING" } });
     const crawl = await database.crawlRun.create({ data: { organizationId: noDocumentOrganizationId, homepageUrl: "https://no-document.example/", status: "SUCCEEDED" } });
@@ -617,7 +626,14 @@ describe("company intelligence persistence and protected API", () => {
     }
     parse.mockResolvedValueOnce(success as never);
     const before = await database.companyFitObservation.count({ where: { organizationId: noDocumentOrganizationId } });
-    await signedRequest("POST", "research", noDocumentCandidateId).expect(failure === "unsupported-evidence" ? 422 : 502);
+    // A provider 429 is a deliberate rate-limit answer with Retry-After (PH1-03b); other failures keep their status.
+    const failedResponse = await signedRequest("POST", "research", noDocumentCandidateId).expect(
+      failure === "unsupported-evidence" ? 422 : failure === "rate-limit" ? 429 : 502,
+    );
+    if (failure === "rate-limit") {
+      expect(failedResponse.headers["retry-after"]).toBeDefined();
+      expect(failedResponse.body).toMatchObject({ error: "RATE_LIMITED", retryable: true });
+    }
     expect(await database.companyFitObservation.count({ where: { organizationId: noDocumentOrganizationId } })).toBe(before);
     expect(await database.leadCandidate.findUniqueOrThrow({ where: { id: noDocumentCandidateId } })).toMatchObject({ status: "VALIDATING" });
     const failed = await database.claimExtractionRun.findFirstOrThrow({ where: { organizationId: noDocumentOrganizationId, status: "FAILED" }, orderBy: { startedAt: "desc" } });
@@ -628,6 +644,18 @@ describe("company intelligence persistence and protected API", () => {
     await signedRequest("POST", "research", noDocumentCandidateId).expect(201);
     expect(parse).toHaveBeenCalledTimes(2);
     expect(await database.companyFitObservation.count({ where: { sourceId: source.id } })).toBe(1);
+
+    // PH1-03b: both provider calls (the failed one and the retry) went through the gateway under the campaign and
+    // its run, with one distinct key per lease; the cached third request reserved nothing.
+    const usage = await database.providerUsage.findMany({
+      where: { operation: "claim-extraction", campaignId, createdAt: { gte: since } },
+      orderBy: { reservedAt: "asc" },
+    });
+    expect(usage).toHaveLength(2);
+    expect(usage.every((row) => row.runId === startEvent.id && row.provider === "openai")).toBe(true);
+    expect(new Set(usage.map((row) => row.callKey)).size).toBe(2);
+    expect(usage[0]?.status).toBe(failure === "rate-limit" ? "RELEASED" : "SETTLED");
+    expect(usage[1]?.status).toBe("SETTLED");
   });
 
   it("makes a failed diagnostic research claim explicitly review-owned and forbids blind replay", async () => {

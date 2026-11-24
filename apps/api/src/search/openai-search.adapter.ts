@@ -11,6 +11,7 @@ import {
   type SearchResult,
 } from "@tcpl-marketer/ai-contracts";
 import type {
+  ProviderCallContext,
   ProviderRun,
   ProviderUsage,
   SearchCampaignContext,
@@ -20,6 +21,8 @@ import type {
 } from "@tcpl-marketer/provider-contracts";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
+
+import { requireProviderCallContext } from "../provider-budget/provider-call-context.js";
 
 export const OPENAI_CLIENT = Symbol("OPENAI_CLIENT");
 
@@ -35,7 +38,9 @@ export class OpenAISearchAdapter implements SearchPlanner, SearchProvider {
 
   async plan(
     input: SearchCampaignContext,
+    context: ProviderCallContext,
   ): Promise<ProviderRun<SearchPlan>> {
+    requireProviderCallContext(context, "openai").recordRequest();
     const model = this.requireConfiguration();
     try {
       const response = await this.client.responses.parse({
@@ -62,7 +67,9 @@ export class OpenAISearchAdapter implements SearchPlanner, SearchProvider {
 
   async search(
     input: SearchRequest,
+    context: ProviderCallContext,
   ): Promise<ProviderRun<SearchResult[]>> {
+    requireProviderCallContext(context, "openai").recordRequest();
     const model = this.requireConfiguration();
     try {
       const response = await this.client.responses.parse({
@@ -147,6 +154,7 @@ function providerRun<T>(
   response: {
     id: string;
     model: string;
+    output?: unknown[];
     usage?: {
       input_tokens: number;
       output_tokens: number;
@@ -161,20 +169,32 @@ function providerRun<T>(
     model: response.model,
     providerResponseId: response.id,
     prompt,
-    usage: response.usage ? mapUsage(response.usage) : null,
+    usage: response.usage ? mapUsage(response.usage, response.output) : null,
   };
 }
 
-function mapUsage(usage: {
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-}): ProviderUsage {
+function mapUsage(
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+  },
+  output: unknown[] | undefined,
+): ProviderUsage {
   return {
     inputTokens: usage.input_tokens,
     outputTokens: usage.output_tokens,
     totalTokens: usage.total_tokens,
+    // Only a web_search_call whose action is a search is billed; opening or finding in a page is not.
+    ...(Array.isArray(output) ? { webSearchCalls: output.filter(isBilledSearch).length } : {}),
   };
+}
+
+function isBilledSearch(item: unknown): boolean {
+  if (!isRecord(item) || item.type !== "web_search_call") return false;
+  const action = item.action;
+  // A call that reports no action is counted, because an uncounted search would understate the cost.
+  return !isRecord(action) || action.type === undefined || action.type === "search";
 }
 
 function searchContextSize(): "low" | "medium" | "high" {
@@ -211,7 +231,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function providerFailure(message: string, error: unknown): Error {
   if (error instanceof ServiceUnavailableException) return error;
+  // The original error stays as the cause so the shared outcome mapper can see the provider's own status.
   return new BadGatewayException(
     `${message}: ${error instanceof Error ? error.message.slice(0, 300) : "unknown provider error"}`,
+    { cause: error },
   );
 }

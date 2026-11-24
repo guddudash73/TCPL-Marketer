@@ -8,13 +8,18 @@ import type {
   EnrichedPerson,
   PeopleProvider,
   PeopleSearchInput,
+  PeopleSearchRun,
   PersonCandidate,
+  ProviderCallContext,
 } from "@tcpl-marketer/provider-contracts";
 import {
   PeopleSearchInputSchema,
   normalizePersonCandidate,
 } from "@tcpl-marketer/validation";
 import { z } from "zod";
+
+import { requireProviderCallContext } from "../provider-budget/provider-call-context.js";
+import { ProviderHttpError } from "../provider-budget/provider-http-error.js";
 
 export const APOLLO_FETCH = Symbol("APOLLO_FETCH");
 export type ApolloFetch = typeof fetch;
@@ -59,15 +64,17 @@ const ApolloPeopleSearchResponseSchema = z
 export class ApolloPeopleSearchAdapter implements PeopleProvider {
   constructor(@Inject(APOLLO_FETCH) private readonly request: ApolloFetch) {}
 
-  async searchPeople(rawInput: PeopleSearchInput): Promise<PersonCandidate[]> {
+  async searchPeople(rawInput: PeopleSearchInput, context: ProviderCallContext): Promise<PeopleSearchRun> {
+    const call = requireProviderCallContext(context, "apollo");
     const input = PeopleSearchInputSchema.parse(rawInput);
-    if (!input.organization.domain) return [];
+    if (!input.organization.domain) return { candidates: [], usage: null };
 
     const apiKey = process.env.APOLLO_API_KEY?.trim();
     if (!apiKey) {
       throw new ServiceUnavailableException("Apollo API key is not configured");
     }
 
+    call.recordRequest();
     const response = await this.request(
       `${apolloBaseUrl()}${APOLLO_PEOPLE_SEARCH_PATH}`,
       {
@@ -83,19 +90,25 @@ export class ApolloPeopleSearchAdapter implements PeopleProvider {
     );
 
     if (!response.ok) {
-      const detail = (await response.text()).slice(0, 300);
+      // Parse the code and the stated wait from the whole (bounded) body; only a short slice goes into the message.
+      const body = (await response.text()).slice(0, 8_000);
+      const detail = body.slice(0, 300);
+      // Apollo documents a 429 with a retry-after header and an error_details.code in the body.
       throw new BadGatewayException(
         `Apollo People Search failed (${response.status})${detail ? `: ${detail}` : ""}`,
+        { cause: new ProviderHttpError("apollo", response.status, response.headers, apolloErrorCode(body), apolloRetryAfter(body)) },
       );
     }
 
     const payload = ApolloPeopleSearchResponseSchema.parse(
       await response.json(),
     );
-    return payload.people
+    const candidates = payload.people
       .map(mapApolloPerson)
       .filter((candidate): candidate is PersonCandidate => candidate !== null)
       .slice(0, input.maximumResults);
+    // Apollo documents People API Search as 0 credits and reports no usage in the response.
+    return { candidates, usage: { requests: 1, credits: 0 } };
   }
 
   enrichPerson(): Promise<EnrichedPerson | null> {
@@ -186,3 +199,31 @@ function apolloTimeoutMilliseconds(): number {
     ? Math.min(configured, 60_000)
     : 15_000;
 }
+
+/** The error_details.code of an Apollo error body, when the body is JSON and carries one. */
+function apolloErrorCode(body: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    const details = typeof parsed === "object" && parsed !== null ? (parsed as { error_details?: { code?: unknown } }).error_details : undefined;
+    return typeof details?.code === "string" ? details.code.slice(0, 120) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The wait Apollo states in error_details.suggestions[].retry_after_seconds (its platform-wide 429 sends no header). */
+function apolloRetryAfter(body: string): number | undefined {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    const suggestions = typeof parsed === "object" && parsed !== null ? (parsed as { error_details?: { suggestions?: unknown } }).error_details?.suggestions : undefined;
+    if (!Array.isArray(suggestions)) return undefined;
+    for (const item of suggestions) {
+      const seconds = typeof item === "object" && item !== null ? (item as { retry_after_seconds?: unknown }).retry_after_seconds : undefined;
+      if (typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0) return seconds;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+

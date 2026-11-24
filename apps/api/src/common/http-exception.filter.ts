@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { Logger } from "nestjs-pino";
 
+import { classifyProviderError } from "../provider-budget/provider-outcome.js";
 import { reportError } from "../observability/error-reporting.js";
 import { currentCorrelationId } from "./correlation/correlation-context.js";
 import { redact, redactString } from "./redaction/redactor.js";
@@ -18,6 +19,7 @@ interface RequestWithId {
 }
 
 interface JsonResponse {
+  setHeader(name: string, value: string): void;
   status(statusCode: number): JsonResponse;
   json(body: object): void;
 }
@@ -30,6 +32,28 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const context = host.switchToHttp();
     const response = context.getResponse<JsonResponse>();
     const request = context.getRequest<RequestWithId>();
+
+    // Spend, rate, credit and timeout outcomes get a deliberate answer: a stable code, the
+    // right status and, when a retry can succeed, a Retry-After header. The reason is generic.
+    const outcome = classifyProviderError(exception);
+    if (outcome) {
+      const outcomeCorrelationId = currentCorrelationId() ?? request.id;
+      this.logger.warn(
+        { outcome: outcome.code, correlationId: outcomeCorrelationId, method: request.method, path: request.url, status: outcome.httpStatus },
+        "Provider outcome returned to caller",
+      );
+      if (outcome.retryAfterSeconds !== undefined) response.setHeader("Retry-After", String(outcome.retryAfterSeconds));
+      response.status(outcome.httpStatus).json({
+        statusCode: outcome.httpStatus,
+        error: outcome.code,
+        message: sanitizeMessage(outcome.reason),
+        retryable: outcome.retryable,
+        ...(outcome.retryAfterSeconds !== undefined ? { retryAfterSeconds: outcome.retryAfterSeconds } : {}),
+        correlationId: outcomeCorrelationId,
+      });
+      return;
+    }
+
     const isHttpException = exception instanceof HttpException;
     const status = isHttpException
       ? exception.getStatus()

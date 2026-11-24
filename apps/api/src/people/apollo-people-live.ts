@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
+import { createPrismaClient } from "@tcpl-marketer/database";
 import { PeopleSearchInputSchema } from "@tcpl-marketer/validation";
+
+import { createStandaloneGateway } from "../provider-budget/standalone-gateway.js";
 
 import { ApolloPeopleSearchAdapter } from "./apollo-people-search.adapter.js";
 
@@ -11,8 +14,10 @@ if (!process.env.APOLLO_API_KEY) {
 const domain = process.env.APOLLO_LIVE_DOMAIN?.trim() || "apollo.io";
 const title = process.env.APOLLO_LIVE_TITLE?.trim() || "Chief Executive Officer";
 const adapter = new ApolloPeopleSearchAdapter(globalThis.fetch);
-const candidates = await adapter.searchPeople(
-  PeopleSearchInputSchema.parse({
+// The live check spends against the same caps as the application and leaves ledger and audit rows.
+const database = createPrismaClient();
+const gateway = createStandaloneGateway(database);
+const input = PeopleSearchInputSchema.parse({
     organization: {
       id: randomUUID(),
       name: domain,
@@ -30,8 +35,10 @@ const candidates = await adapter.searchPeople(
       },
     ],
     maximumResults: 1,
-  }),
-);
+  });
+const run = await gateway.run({ provider: "apollo", operation: "people-search" }, (call) => adapter.searchPeople(input, call));
+await database.$disconnect();
+const candidates = run.candidates;
 
 if (candidates.length === 0) {
   throw new Error(`Apollo returned no candidates for ${title} at ${domain}`);

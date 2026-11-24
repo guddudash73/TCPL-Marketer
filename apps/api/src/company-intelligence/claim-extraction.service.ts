@@ -22,6 +22,8 @@ import {
   type ProviderRun,
 } from "@tcpl-marketer/provider-contracts";
 
+import { ProviderCallAuditor } from "../audit/provider-call-auditor.service.js";
+import { bindCampaign } from "../common/correlation/correlation-context.js";
 import { DatabaseService } from "../database/database.service.js";
 import { assertDiagnosticClaim } from "../acceptance/diagnostic-claim.js";
 import {
@@ -102,6 +104,7 @@ export class ClaimExtractionService {
     @Inject(CLAIM_EXTRACTOR) private readonly extractor: ClaimExtractor,
     @Inject(CompanyFitEvidenceService)
     private readonly companyFit: CompanyFitEvidenceService,
+    @Inject(ProviderCallAuditor) private readonly providerCalls: ProviderCallAuditor,
   ) {}
 
   async extractForOrganization(
@@ -120,7 +123,7 @@ export class ClaimExtractionService {
       JSON.stringify(
         context.sourceHashes
           .toSorted(([left], [right]) => left.localeCompare(right))
-          .map(([id, contentHash]) => ({ id, contentHash })),
+          .map(([url, contentHash]) => ({ url, contentHash })),
       ),
     );
     const idempotencyKey = sha256(
@@ -144,7 +147,12 @@ export class ClaimExtractionService {
     }
 
     try {
-      const providerRun = await this.extractAndValidate(context.request);
+      // One key per lease of this extraction run: duplicate delivery of the same lease never reserves
+      // twice, while a re-acquired run after a failure is a new, counted call.
+      const providerRun = await this.extractAndValidate(
+        context.request,
+        `claim-extraction:${acquired.run.id}:${acquired.run.startedAt.getTime()}`,
+      );
       if (
         providerRun.prompt.name !== configuration.prompt.name ||
         providerRun.prompt.version !== configuration.prompt.version
@@ -235,9 +243,11 @@ export class ClaimExtractionService {
   ): Promise<LeadCandidateResearchResult> {
     const candidate = await this.database.client.leadCandidate.findUnique({
       where: { id: candidateId },
-      select: { id: true, organizationId: true, status: true, updatedAt: true },
+      select: { id: true, organizationId: true, campaignId: true, status: true, updatedAt: true },
     });
     if (!candidate) throw new NotFoundException("Lead candidate not found");
+    // Provider spend for this candidate counts toward its campaign and run caps.
+    bindCampaign(candidate.campaignId);
     const claim = await assertDiagnosticClaim(
       this.database.client,
       candidateId,
@@ -434,8 +444,12 @@ export class ClaimExtractionService {
 
   private async extractAndValidate(
     request: ClaimExtractionRequest,
+    callKey?: string,
   ): Promise<ProviderRun<ClaimExtraction>> {
-    const run = await this.extractor.extract(request);
+    const run = await this.providerCalls.run(
+      { provider: "openai", operation: "claim-extraction", callKey },
+      (call) => this.extractor.extract(request, call),
+    );
     return validateProviderRun(
       run,
       new Set(request.documents.map(({ evidenceId }) => evidenceId)),
@@ -535,9 +549,15 @@ function boundedDocuments(
 } {
   const documents: ClaimExtractionRequest["documents"] = [];
   const sourceHashes: Array<[string, string]> = [];
+  const seen = new Set<string>();
   let remaining = MAX_TOTAL_CHARACTERS;
   for (const source of sources) {
     if (!source.webDocument || remaining <= 0) continue;
+    // The same page with the same content from a repeated crawl is one document, newest first. The document
+    // set is keyed on page and content, not on source rows, so an unchanged re-crawl reuses the earlier research.
+    const identity = `${source.url}\n${source.contentHash}`;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
     const text = source.webDocument.text.slice(
       0,
       Math.min(MAX_DOCUMENT_CHARACTERS, remaining),
@@ -549,7 +569,7 @@ function boundedDocuments(
       title: source.title,
       text,
     });
-    sourceHashes.push([source.id, source.contentHash]);
+    sourceHashes.push([source.url, source.contentHash]);
     remaining -= text.length;
   }
   return { documents, sourceHashes };

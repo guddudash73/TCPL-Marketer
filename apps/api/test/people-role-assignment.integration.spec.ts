@@ -96,6 +96,8 @@ describe("decision-maker role assignment persistence", () => {
         name: "D016 people selection",
         sectorId,
         createdByUserId: userId,
+        // Provider work is refused for a campaign that is not running (PH1-03b).
+        status: "RUNNING",
         researchDepth: "STANDARD",
         countries: ["United States"],
         targetLeadCount: 1,

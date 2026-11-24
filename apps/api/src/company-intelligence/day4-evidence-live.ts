@@ -3,8 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createPrismaClient } from "@tcpl-marketer/database";
 import { createN8nWebhookToken } from "@tcpl-marketer/orchestration-contracts";
 
-import { CrawlRunner } from "../crawler/crawl-runner.js";
-import type { DatabaseService } from "../database/database.service.js";
+import { createStandaloneCrawlRunner } from "../provider-budget/standalone-gateway.js";
 
 const SOURCE_URL = "https://www.iana.org/about";
 const n8nBaseUrl = (process.env.N8N_BASE_URL ?? "http://localhost:5678").replace(
@@ -71,7 +70,7 @@ try {
     },
   });
 
-  const crawler = new CrawlRunner({ client: database } as DatabaseService);
+  const crawler = createStandaloneCrawlRunner(database);
   const crawl = await crawler.run(organization.id, SOURCE_URL, async () => ({
     homepageUrl: new URL(SOURCE_URL).origin + "/",
     robotsUrl: new URL("/robots.txt", SOURCE_URL).toString(),

@@ -8,7 +8,11 @@ import {
 import type { PeopleProvider, PersonCandidate } from "@tcpl-marketer/provider-contracts";
 import { PeopleSearchInputSchema } from "@tcpl-marketer/validation";
 
+import { ProviderCallAuditor } from "../audit/provider-call-auditor.service.js";
+import { bindCampaign } from "../common/correlation/correlation-context.js";
 import { DatabaseService } from "../database/database.service.js";
+import { redactString } from "../common/redaction/redactor.js";
+import { classifyProviderError } from "../provider-budget/provider-outcome.js";
 import { assertDiagnosticClaim } from "../acceptance/diagnostic-claim.js";
 import { ApolloPeopleSearchAdapter } from "./apollo-people-search.adapter.js";
 import { DecisionMakerAssignmentService } from "./decision-maker-assignment.service.js";
@@ -28,6 +32,8 @@ export class PeopleSelectionWorkflowService {
     private readonly persistence: PeoplePersistenceService,
     @Inject(DecisionMakerAssignmentService)
     private readonly assignments: DecisionMakerAssignmentService,
+    @Inject(ProviderCallAuditor)
+    private readonly providerCalls: ProviderCallAuditor,
   ) {}
 
   async selectDecisionMakers(
@@ -42,6 +48,8 @@ export class PeopleSelectionWorkflowService {
       inputHash,
     );
     const context = await this.loadContext(leadCandidateId);
+    // Provider spend for this candidate counts toward its campaign and run caps.
+    bindCampaign(context.campaignId);
     if (claim && claim.candidateUpdatedAt.getTime() !== context.updatedAt.getTime()) {
       throw new ConflictException(
         "Lead candidate changed before F001 people selection; reconcile before continuing",
@@ -73,11 +81,18 @@ export class PeopleSelectionWorkflowService {
         roles,
         maximumResults: 25,
       });
-      for (const [providerName, provider] of this.providers()) {
+      for (const source of this.providers()) {
         try {
-          candidates.push(...(await provider.searchPeople(input)));
+          const run = await this.providerCalls.run(
+            { provider: source.gatewayProvider, operation: source.operation, campaignId: context.campaignId },
+            (call) => source.provider.searchPeople(input, call),
+          );
+          candidates.push(...run.candidates);
         } catch (error) {
-          warnings.push(`${providerName} discovery unavailable: ${safeMessage(error)}`);
+          // A spend, rate, credit, timeout or stopped-campaign outcome ends the stage with an explained
+          // answer instead of selecting people from a partial search. Nothing has been persisted yet.
+          if (classifyProviderError(error)) throw error;
+          warnings.push(`${source.name} discovery unavailable: ${safeMessage(error)}`);
         }
       }
     }
@@ -107,10 +122,15 @@ export class PeopleSelectionWorkflowService {
     };
   }
 
-  private providers(): Array<[string, PeopleProvider]> {
+  private providers(): Array<{
+    name: string;
+    gatewayProvider: string;
+    operation: string;
+    provider: PeopleProvider;
+  }> {
     return [
-      ["Public-web", this.publicPeople],
-      ["Apollo", this.apolloPeople],
+      { name: "Public-web", gatewayProvider: "openai", operation: "people-web-search", provider: this.publicPeople },
+      { name: "Apollo", gatewayProvider: "apollo", operation: "people-search", provider: this.apolloPeople },
     ];
   }
 
@@ -120,6 +140,7 @@ export class PeopleSelectionWorkflowService {
       select: {
         updatedAt: true,
         status: true,
+        campaignId: true,
         scores: {
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: 1,
@@ -192,9 +213,9 @@ function uniqueCandidates(candidates: PersonCandidate[]): PersonCandidate[] {
   return [...unique.values()];
 }
 
+/** Warnings are returned to the caller and stored, so provider text passes through the redactor first. */
 function safeMessage(error: unknown): string {
-  return (error instanceof Error ? error.message : "unknown provider error").slice(
-    0,
-    300,
+  return redactString(
+    (error instanceof Error ? error.message : "unknown provider error").slice(0, 300),
   );
 }

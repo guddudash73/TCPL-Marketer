@@ -130,6 +130,41 @@ export const AUDIT_EVENTS = {
       .strict(),
   ),
 
+  "provider.budget_refused": define(
+    "provider",
+    false,
+    z
+      .object({
+        operation: text,
+        decision: z.enum(["BUDGET_EXCEEDED", "RATE_LIMITED", "CAP_NOT_CONFIGURED", "ALREADY_SETTLED", "CAMPAIGN_NOT_ACTIVE"]),
+        scope: z.enum(["RUN", "CAMPAIGN", "DAY", "GLOBAL_DAY"]).optional(),
+        unit: z.enum(["USD", "CREDITS", "REQUESTS"]).optional(),
+        cap: z.string().max(32).optional(),
+        used: z.string().max(32).optional(),
+        requested: z.string().max(32).optional(),
+        limit: z.enum(["REQUESTS_PER_MINUTE", "CONCURRENCY"]).optional(),
+        retryAfterSeconds: z.number().int().min(0).optional(),
+        campaignState: z.string().max(32).optional(),
+      })
+      .strict(),
+  ),
+
+  "provider.budget_alert": define(
+    "provider",
+    false,
+    z
+      .object({
+        kind: z.enum(["THRESHOLD", "CAP_REACHED", "EXPIRED_HOLD"]),
+        scope: z.enum(["RUN", "CAMPAIGN", "DAY", "GLOBAL_DAY"]),
+        windowKey: z.string().max(80),
+        thresholdPercent: z.number().int().min(0).max(100).optional(),
+        unit: z.enum(["USD", "CREDITS", "REQUESTS"]).optional(),
+        cap: z.string().max(32).optional(),
+        used: z.string().max(32).optional(),
+      })
+      .strict(),
+  ),
+
   "operator.retry_requested": define(
     "stage_run",
     true,

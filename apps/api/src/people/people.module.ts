@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
 import OpenAI from "openai";
 
+import { AuditModule } from "../audit/audit.module.js";
+
 import {
   APOLLO_FETCH,
   ApolloPeopleSearchAdapter,
@@ -15,6 +17,7 @@ import {
 } from "./public-people-search.adapter.js";
 
 @Module({
+  imports: [AuditModule],
   controllers: [InternalPeopleController],
   providers: [
     PeoplePersistenceService,

@@ -18,6 +18,18 @@ export const PEOPLE_PROVIDER = Symbol("PEOPLE_PROVIDER");
 export const SEARCH_PLANNER = Symbol("SEARCH_PLANNER");
 export const SEARCH_PROVIDER = Symbol("SEARCH_PROVIDER");
 
+/**
+ * Issued by the provider gateway for exactly one provider call (PH1-03c). Every
+ * provider adapter requires it, so an adapter cannot be called outside the
+ * gateway that reserves budget, applies the rate limit and writes the audit row.
+ */
+export interface ProviderCallContext {
+  readonly provider: string;
+  readonly operation: string;
+  /** Counts one outbound provider request toward the call's reported usage. */
+  recordRequest(count?: number): void;
+}
+
 export interface ClaimSourceDocument {
   evidenceId: string;
   url: string;
@@ -41,6 +53,7 @@ export interface ClaimExtractor {
   getConfiguration(): ClaimExtractorConfiguration;
   extract(
     input: ClaimExtractionRequest,
+    context: ProviderCallContext,
   ): Promise<ProviderRun<ClaimExtraction>>;
 }
 
@@ -77,6 +90,8 @@ export interface ProviderUsage {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  /** Billed web_search tool calls in the response. Absent when the provider did not report it. */
+  webSearchCalls?: number;
 }
 
 export interface ProviderRun<T> {
@@ -94,11 +109,11 @@ export interface SearchRequest {
 }
 
 export interface SearchPlanner {
-  plan(input: SearchCampaignContext): Promise<ProviderRun<SearchPlan>>;
+  plan(input: SearchCampaignContext, context: ProviderCallContext): Promise<ProviderRun<SearchPlan>>;
 }
 
 export interface SearchProvider {
-  search(input: SearchRequest): Promise<ProviderRun<SearchResult[]>>;
+  search(input: SearchRequest, context: ProviderCallContext): Promise<ProviderRun<SearchResult[]>>;
 }
 
 export interface PersonEnrichmentInput {
@@ -119,7 +134,24 @@ export interface EnrichedPerson {
   enrichedAt: string;
 }
 
+/** What one people search consumed. A field is absent when the provider did not report it. */
+export interface PeopleSearchUsage {
+  requests: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  /** Billed web searches (OpenAI web_search `search` actions). */
+  webSearchCalls?: number;
+  /** Provider credits consumed, as the provider documents them. */
+  credits?: number;
+}
+
+export interface PeopleSearchRun {
+  candidates: PersonCandidate[];
+  usage: PeopleSearchUsage | null;
+}
+
 export interface PeopleProvider {
-  searchPeople(input: PeopleSearchInput): Promise<PersonCandidate[]>;
+  searchPeople(input: PeopleSearchInput, context: ProviderCallContext): Promise<PeopleSearchRun>;
   enrichPerson(input: PersonEnrichmentInput): Promise<EnrichedPerson | null>;
 }

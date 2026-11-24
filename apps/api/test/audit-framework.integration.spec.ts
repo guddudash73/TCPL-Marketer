@@ -18,6 +18,9 @@ import { runWithCorrelation } from "../src/common/correlation/correlation-contex
 import type { DatabaseService } from "../src/database/database.service.js";
 import { PrismaCampaignStateReader } from "../src/orchestration/prisma-campaign-state-reader.js";
 import { StageRunService } from "../src/orchestration/stage-run.service.js";
+import { readProviderBudgetConfig } from "../src/provider-budget/provider-budget.config.js";
+import { CampaignProviderCallGuard } from "../src/provider-budget/provider-call-guard.js";
+import { ProviderUsageLedger } from "../src/provider-budget/provider-usage-ledger.service.js";
 import { OpenAISearchAdapter } from "../src/search/openai-search.adapter.js";
 import { serviceHeaders } from "./support/service-auth.js";
 
@@ -254,7 +257,7 @@ describe("audit, redaction and correlation framework (private PostgreSQL databas
     });
 
     it("records a provider call without its request, response or any credential, and rethrows failures unchanged", async () => {
-      const auditor = new ProviderCallAuditor(audit);
+      const auditor = new ProviderCallAuditor(audit, new ProviderUsageLedger(databaseService, readProviderBudgetConfig()), new CampaignProviderCallGuard(databaseService));
       const campaign = await seedCampaign();
       const ok = await auditor.run({ provider: "openai", operation: "search-plan", campaignId: campaign.id }, () =>
         Promise.resolve({ data: "never stored", model: "model-x", providerResponseId: "resp_1", usage: { inputTokens: 10, outputTokens: 5 } }),
@@ -385,6 +388,15 @@ describe("audit, redaction and correlation framework (private PostgreSQL databas
       const stored = JSON.stringify([event, run, rows]);
       for (const secret of [serviceSecret, OPENAI_SECRET]) expect(stored).not.toContain(secret);
       expect(loggedErrors.join("")).not.toContain(serviceSecret);
+
+      // PH1-03a: the same request reserved and settled both OpenAI calls in the usage ledger,
+      // under the stage run and the campaign start event, through the production caller.
+      const usage = await database.providerUsage.findMany({ where: { campaignId: campaign.id }, orderBy: { reservedAt: "asc" } });
+      expect(usage.map((row) => [row.operation, row.status, row.stageRunId, row.runId])).toEqual([
+        ["search-plan", "SETTLED", run.id, event.id],
+        ["web-search", "SETTLED", run.id, event.id],
+      ]);
+      expect(JSON.stringify(usage)).not.toContain(OPENAI_SECRET);
     });
 
     it("traces a provider failure that echoes a secret to the campaign and stage without leaking it anywhere", async () => {
@@ -415,6 +427,12 @@ describe("audit, redaction and correlation framework (private PostgreSQL databas
       // The failure is still diagnosable: the log names the correlation ID and the request.
       expect(loggedErrors.join("")).toContain(correlationId);
       expect(providerCalls).toBe(1);
+
+      // The failed call may have been charged, so it stays counted at the estimate with an unknown cost.
+      const usage = await database.providerUsage.findMany({ where: { campaignId: campaign.id } });
+      expect(usage).toHaveLength(1);
+      expect(usage[0]).toMatchObject({ status: "SETTLED", costKnown: false, outcomeCode: "FAILED_COST_UNKNOWN" });
+      expect(JSON.stringify(usage)).not.toContain(OPENAI_SECRET);
     });
   });
 });

@@ -35,6 +35,25 @@ enum OutboxEventStatus {
   DEAD_LETTER
 }
 
+enum ProviderUsageStatus {
+  RESERVED
+  SETTLED
+  RELEASED
+  EXPIRED
+}
+
+enum ProviderUsageUnit {
+  USD
+  CREDITS
+  REQUESTS
+}
+
+enum ProviderBudgetAlertKind {
+  THRESHOLD
+  CAP_REACHED
+  EXPIRED_HOLD
+}
+
 enum StageName {
   DISCOVERY
   CRAWL
@@ -356,6 +375,8 @@ model Campaign {
   automationRuns         AutomationRun[]
   stageRuns              StageRun[]
   leadCandidates         LeadCandidate[]
+  providerUsage          ProviderUsage[]
+  budgetAlerts           ProviderBudgetAlert[]
 
   @@index([status, createdAt])
   @@index([sectorId])
@@ -374,6 +395,10 @@ model Organization {
   location           String          @db.VarChar(320)
   normalizedLocation String          @map("normalized_location") @db.VarChar(320)
   fallbackKey        String?         @unique @map("fallback_key") @db.VarChar(600)
+  /// PH1-03e: when the website was last crawled successfully, the combined hash of the stored pages, and whether that hash changed.
+  lastCrawledAt      DateTime?       @map("last_crawled_at") @db.Timestamptz(6)
+  websiteContentHash String?         @map("website_content_hash") @db.Char(64)
+  websiteContentChanged Boolean?     @map("website_content_changed")
   createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
   leadCandidates     LeadCandidate[]
@@ -399,6 +424,10 @@ model CrawlRun {
   organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   attempts       CrawlAttempt[]
   sources        Source[]
+  servedFromCache Boolean       @default(false) @map("served_from_cache")
+  cacheSourceRunId String?      @map("cache_source_run_id") @db.Uuid
+  cacheSourceRun CrawlRun?      @relation("CrawlRunCache", fields: [cacheSourceRunId], references: [id], onDelete: SetNull)
+  cachedRuns     CrawlRun[]     @relation("CrawlRunCache")
 
   @@index([organizationId, startedAt])
   @@map("crawl_runs")
@@ -779,11 +808,79 @@ model StageRun {
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   campaign       Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  providerUsage  ProviderUsage[]
 
   @@unique([entityType, entityId, stage, inputHash])
   @@index([campaignId, stage, status])
   @@index([status, leaseExpiresAt])
   @@map("stage_runs")
+}
+
+/// PH1-03a: one row per provider call attempt. The caps are enforced over this
+/// table, so every amount that counts against a cap is recorded here first.
+model ProviderUsage {
+  id             String              @id @default(uuid()) @db.Uuid
+  provider       String              @db.VarChar(32)
+  operation      String              @db.VarChar(64)
+  callKey        String              @map("call_key") @db.VarChar(200)
+  attempt        Int                 @default(1)
+  campaignId     String?             @map("campaign_id") @db.Uuid
+  runId          String?             @map("run_id") @db.VarChar(64)
+  stageRunId     String?             @map("stage_run_id") @db.Uuid
+  usageDate      DateTime            @map("usage_date") @db.Date
+  status         ProviderUsageStatus @default(RESERVED)
+  unit           ProviderUsageUnit
+  reservedAmount Decimal             @map("reserved_amount") @db.Decimal(14, 6)
+  actualAmount   Decimal?            @map("actual_amount") @db.Decimal(14, 6)
+  reservedUsd    Decimal             @default(0) @map("reserved_usd") @db.Decimal(14, 6)
+  actualUsd      Decimal?            @map("actual_usd") @db.Decimal(14, 6)
+  requests       Int                 @default(0)
+  inputTokens    Int?                @map("input_tokens")
+  outputTokens   Int?                @map("output_tokens")
+  webSearchCalls Int?                @map("web_search_calls")
+  credits        Decimal?            @db.Decimal(14, 6)
+  costKnown      Boolean?            @map("cost_known")
+  outcomeCode    String?             @map("outcome_code") @db.VarChar(64)
+  needsReview    Boolean             @default(false) @map("needs_review")
+  reservedAt     DateTime            @default(now()) @map("reserved_at") @db.Timestamptz(6)
+  reservedUntil  DateTime            @map("reserved_until") @db.Timestamptz(6)
+  settledAt      DateTime?           @map("settled_at") @db.Timestamptz(6)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  campaign       Campaign?           @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  stageRun       StageRun?           @relation(fields: [stageRunId], references: [id], onDelete: SetNull)
+  alerts         ProviderBudgetAlert[]
+
+  @@unique([provider, callKey, attempt])
+  @@index([provider, usageDate, status])
+  @@index([campaignId, provider, status])
+  @@index([runId, provider, status])
+  @@index([provider, reservedAt])
+  @@index([status, reservedUntil])
+  @@map("provider_usage")
+}
+
+/// PH1-03d: one row per budget alert; the unique key makes it fire once per scope, window and threshold.
+model ProviderBudgetAlert {
+  id               String                  @id @default(uuid()) @db.Uuid
+  alertKey         String                  @unique @map("alert_key") @db.VarChar(255)
+  kind             ProviderBudgetAlertKind
+  scope            String                  @db.VarChar(16)
+  provider         String?                 @db.VarChar(32)
+  windowKey        String                  @map("window_key") @db.VarChar(80)
+  campaignId       String?                 @map("campaign_id") @db.Uuid
+  usageId          String?                 @map("usage_id") @db.Uuid
+  thresholdPercent Int?                    @map("threshold_percent")
+  unit             ProviderUsageUnit?
+  cap              Decimal?                @db.Decimal(14, 6)
+  used             Decimal?                @db.Decimal(14, 6)
+  createdAt        DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  campaign         Campaign?               @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  usage            ProviderUsage?          @relation(fields: [usageId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, createdAt])
+  @@index([createdAt])
+  @@map("provider_budget_alerts")
 }
 
 model CampaignCapability {

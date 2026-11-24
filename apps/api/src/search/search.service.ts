@@ -28,7 +28,7 @@ export class SearchService {
     @Inject(ProviderCallAuditor) private readonly providerCalls: ProviderCallAuditor,
   ) {}
 
-  async prepareDiscovery(campaignId: string): Promise<unknown> {
+  async prepareDiscovery(campaignId: string, options: { runId?: string } = {}): Promise<unknown> {
     const campaign = await this.database.client.campaign.findUnique({
       where: { id: campaignId },
       include: {
@@ -88,17 +88,20 @@ export class SearchService {
     };
 
     const planning = await this.providerCalls.run(
-      { provider: "openai", operation: "search-plan", campaignId },
-      () => this.planner.plan(context),
+      { provider: "openai", operation: "search-plan", campaignId, runId: options.runId },
+      (call) => this.planner.plan(context, call),
     );
     const discovery = await this.providerCalls.run(
-      { provider: "openai", operation: "web-search", campaignId },
-      () =>
-        this.provider.search({
-          context,
-          plan: planning.data,
-          maximumResults: Math.min(campaign.targetLeadCount, 10),
-        }),
+      { provider: "openai", operation: "web-search", campaignId, runId: options.runId },
+      (call) =>
+        this.provider.search(
+          {
+            context,
+            plan: planning.data,
+            maximumResults: Math.min(campaign.targetLeadCount, 10),
+          },
+          call,
+        ),
     );
     const persistence = await this.organizationResolution.persistDiscovery(
       campaignId,

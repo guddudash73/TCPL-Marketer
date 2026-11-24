@@ -1,5 +1,7 @@
+import { createPrismaClient } from "@tcpl-marketer/database";
 import OpenAI from "openai";
 
+import { createStandaloneGateway } from "../provider-budget/standalone-gateway.js";
 import { OpenAISearchAdapter } from "./openai-search.adapter.js";
 
 if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_RESEARCH_MODEL) {
@@ -46,12 +48,14 @@ const context = {
   targetLeadCount: 5,
 };
 
-const planning = await adapter.plan(context);
-const discovery = await adapter.search({
-  context,
-  plan: planning.data,
-  maximumResults: 5,
-});
+// The live check spends against the same caps as the application and leaves ledger and audit rows.
+const database = createPrismaClient();
+const gateway = createStandaloneGateway(database);
+const planning = await gateway.run({ provider: "openai", operation: "search-plan" }, (call) => adapter.plan(context, call));
+const discovery = await gateway.run({ provider: "openai", operation: "web-search" }, (call) =>
+  adapter.search({ context, plan: planning.data, maximumResults: 5 }, call),
+);
+await database.$disconnect();
 
 process.stdout.write(
   `${JSON.stringify({ planning, discovery }, null, 2)}\n`,

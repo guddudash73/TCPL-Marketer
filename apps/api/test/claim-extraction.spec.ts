@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { passthroughGateway, testCall } from "./support/provider-call.js";
 
 import { ClaimExtractionSchema } from "@tcpl-marketer/ai-contracts";
 import type {
@@ -89,6 +90,7 @@ describe("structured claim extraction", () => {
 
     const run = await adapter.extract(
       request(evidenceId, `Company profile. ${injection}`),
+      testCall("openai", "claim-extraction"),
     );
 
     expect(run.data.claims[0]?.evidenceIds).toEqual([evidenceId]);
@@ -133,7 +135,7 @@ describe("structured claim extraction", () => {
     } as unknown as OpenAI);
 
     await expect(
-      adapter.extract(request(randomUUID(), "Ordinary company content.")),
+      adapter.extract(request(randomUUID(), "Ordinary company content."), testCall("openai", "claim-extraction")),
     ).rejects.toThrow("Unknown evidence ID returned");
   });
 
@@ -180,6 +182,7 @@ describe("structured claim extraction", () => {
         extract,
       } as ClaimExtractor,
       { getProfile: vi.fn() } as never,
+      passthroughGateway(),
     );
 
     const result = await service.extractForOrganization(organizationId);
@@ -187,7 +190,8 @@ describe("structured claim extraction", () => {
     expect(findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: organizationId } }),
     );
-    expect(extract).toHaveBeenCalledWith({
+    expect(extract).toHaveBeenCalledWith(
+      {
       organizationId,
       organizationName: "Stored Document Company",
       documents: [
@@ -198,7 +202,9 @@ describe("structured claim extraction", () => {
           text: "We provide aerial LiDAR mapping.",
         },
       ],
-    });
+      },
+      expect.anything(),
+    );
     expect(result.data.claims[0]?.evidenceIds).toEqual([evidenceId]);
   });
 
@@ -216,7 +222,7 @@ describe("structured claim extraction", () => {
     } as unknown as OpenAI);
 
     await expect(
-      adapter.extract(request(randomUUID(), "Ordinary company content.")),
+      adapter.extract(request(randomUUID(), "Ordinary company content."), testCall("openai", "claim-extraction")),
     ).rejects.toThrow("did not complete: incomplete");
   });
 
@@ -239,7 +245,7 @@ describe("structured claim extraction", () => {
     } as unknown as OpenAI);
 
     await expect(
-      adapter.extract(request(randomUUID(), "Ordinary company content.")),
+      adapter.extract(request(randomUUID(), "Ordinary company content."), testCall("openai", "claim-extraction")),
     ).rejects.toThrow("model refusal");
   });
 });

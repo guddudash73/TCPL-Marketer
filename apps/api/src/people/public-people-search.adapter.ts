@@ -8,7 +8,10 @@ import type {
   EnrichedPerson,
   PeopleProvider,
   PeopleSearchInput,
+  PeopleSearchRun,
+  PeopleSearchUsage,
   PersonCandidate,
+  ProviderCallContext,
 } from "@tcpl-marketer/provider-contracts";
 import {
   PeopleSearchInputSchema,
@@ -17,6 +20,8 @@ import {
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
+
+import { requireProviderCallContext } from "../provider-budget/provider-call-context.js";
 
 export const PUBLIC_PEOPLE_OPENAI_CLIENT = Symbol("PUBLIC_PEOPLE_OPENAI_CLIENT");
 
@@ -43,7 +48,8 @@ export class PublicPeopleSearchAdapter implements PeopleProvider {
     @Inject(PUBLIC_PEOPLE_OPENAI_CLIENT) private readonly client: OpenAI,
   ) {}
 
-  async searchPeople(rawInput: PeopleSearchInput): Promise<PersonCandidate[]> {
+  async searchPeople(rawInput: PeopleSearchInput, context: ProviderCallContext): Promise<PeopleSearchRun> {
+    requireProviderCallContext(context, "openai").recordRequest();
     const input = PeopleSearchInputSchema.parse(rawInput);
     const model = requirePublicPeopleModel();
     try {
@@ -81,7 +87,7 @@ export class PublicPeopleSearchAdapter implements PeopleProvider {
       });
       const parsed = PublicPeopleResultsSchema.parse(response.output_parsed);
       const consultedSources = collectSourceUrls(response.output);
-      return parsed.people
+      const candidates = parsed.people
         .flatMap((person) => {
           const sourceUrl = normalizeHttpUrl(person.sourceUrl);
           const profileUrl = person.profileUrl
@@ -102,9 +108,12 @@ export class PublicPeopleSearchAdapter implements PeopleProvider {
           ];
         })
         .slice(0, input.maximumResults);
+      return { candidates, usage: peopleUsage(response) };
     } catch (error) {
+      // The original error stays as the cause so the shared outcome mapper sees the provider's own status.
       throw new BadGatewayException(
         `Public people discovery failed: ${error instanceof Error ? error.message.slice(0, 300) : "unknown provider error"}`,
+        { cause: error },
       );
     }
   }
@@ -112,6 +121,29 @@ export class PublicPeopleSearchAdapter implements PeopleProvider {
   enrichPerson(): Promise<EnrichedPerson | null> {
     return Promise.resolve(null);
   }
+}
+
+/** Tokens and billed searches of one response. Only a web_search_call whose action is a search is billed. */
+function peopleUsage(response: {
+  output?: unknown[];
+  usage?: { input_tokens: number; output_tokens: number; total_tokens: number } | null;
+}): PeopleSearchUsage {
+  const searches = (response.output ?? []).filter((item) => {
+    if (!isRecord(item) || item.type !== "web_search_call") return false;
+    const action = item.action;
+    return !isRecord(action) || action.type === undefined || action.type === "search";
+  }).length;
+  return {
+    requests: 1,
+    webSearchCalls: searches,
+    ...(response.usage
+      ? {
+          inputTokens: response.usage.input_tokens,
+          outputTokens: response.usage.output_tokens,
+          totalTokens: response.usage.total_tokens,
+        }
+      : {}),
+  };
 }
 
 function mapPublicPerson(
@@ -192,4 +224,8 @@ function normalizeHttpUrl(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

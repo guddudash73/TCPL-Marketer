@@ -1,6 +1,7 @@
 import type { PeopleSearchInput } from "@tcpl-marketer/provider-contracts";
 import { PeopleSearchInputSchema, PersonCandidateSchema } from "@tcpl-marketer/validation";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { testCall } from "./support/provider-call.js";
 
 import { ApolloPeopleSearchAdapter } from "../src/people/apollo-people-search.adapter.js";
 import { PublicPeopleSearchAdapter } from "../src/people/public-people-search.adapter.js";
@@ -90,7 +91,8 @@ describe("people discovery adapters", () => {
       responses: { parse },
     } as never);
 
-    const result = await adapter.searchPeople(input);
+    const run = await adapter.searchPeople(input, testCall("openai", "people-web-search"));
+    const result = run.candidates;
 
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
@@ -146,7 +148,8 @@ describe("people discovery adapters", () => {
     });
     const adapter = new ApolloPeopleSearchAdapter(request as typeof fetch);
 
-    const result = await adapter.searchPeople(input);
+    const run = await adapter.searchPeople(input, testCall("apollo", "people-search"));
+    const result = run.candidates;
 
     expect(request).toHaveBeenCalledOnce();
     expect(String(request.mock.calls[0]?.[0])).toBe(

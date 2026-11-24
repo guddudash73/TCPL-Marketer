@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import { createPrismaClient } from "@tcpl-marketer/database";
 
+import { createStandaloneCrawlRunner } from "../provider-budget/standalone-gateway.js";
 import { planCrawl } from "./crawl-planner.js";
 import { CrawlRunner } from "./crawl-runner.js";
 import { validatePublicUrl } from "./safe-http.js";
-import type { DatabaseService } from "../database/database.service.js";
 
 // Explicit, low-volume verification targets. Discovery still obeys each site's robots policy.
 const DEFAULT_SITES = [
@@ -27,12 +27,12 @@ try {
       location: "Test", normalizedLocation: "test",
     } });
     try {
-      const runner = new CrawlRunner({ client: database } as DatabaseService);
+      const runner = createStandaloneCrawlRunner(database);
       let result: Awaited<ReturnType<CrawlRunner["run"]>> | undefined;
       let failure: string | undefined;
       try {
-        result = await runner.run(organization.id, site, async (url) => {
-          const plan = await planCrawl(url);
+        result = await runner.run(organization.id, site, async (url, read) => {
+          const plan = await planCrawl(url, read);
           return { ...plan, pageUrls: plan.pageUrls.slice(0, 2) };
         });
       } catch (error) {

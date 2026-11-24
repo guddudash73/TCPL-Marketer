@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
+import { testCrawlRunner } from "./support/provider-call.js";
 
 import { createPrismaClient } from "@tcpl-marketer/database";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { planCrawl } from "../src/crawler/crawl-planner.js";
-import { CrawlRunner } from "../src/crawler/crawl-runner.js";
 import { fetchContent } from "../src/crawler/page-fetcher.js";
 import { readPublicPage, type SafePage } from "../src/crawler/safe-http.js";
 import type { DatabaseService } from "../src/database/database.service.js";
@@ -46,7 +46,7 @@ describe("crawler end-to-end path", () => {
       return result;
     });
     const render = vi.fn(async () => "<title>Team</title><main>Rendered leadership information</main>");
-    const runner = new CrawlRunner({ client: database } as DatabaseService);
+    const runner = testCrawlRunner({ client: database } as DatabaseService);
     const result = await runner.run(organizationId, origin,
       (url) => planCrawl(url, read),
       (url) => fetchContent(url, read, render));
@@ -89,7 +89,7 @@ describe("crawler end-to-end path", () => {
     "http://localhost/", "http://127.0.0.1/", "http://10.0.0.1/",
     "http://169.254.169.254/latest/meta-data/", "file:///etc/passwd",
   ])("rejects %s before creating a run or fetching", async (url) => {
-    const runner = new CrawlRunner({ client: database } as DatabaseService);
+    const runner = testCrawlRunner({ client: database } as DatabaseService);
     const plan = vi.fn();
     const fetch = vi.fn();
     const before = await database.crawlRun.count({ where: { organizationId } });

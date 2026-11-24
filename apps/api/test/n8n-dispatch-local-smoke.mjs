@@ -28,6 +28,12 @@ const tickSecret = process.env.SERVICE_SECRET_N8N_OUTBOX_DISPATCH;
 if (!tickSecret) throw new Error("SERVICE_SECRET_N8N_OUTBOX_DISPATCH is required");
 
 process.env.OPENAI_API_KEY = "disabled-for-local-smoke";
+// Provider caps (PH1-03a): the app refuses to start with a provider key and no caps. These runs make no provider call.
+for (const [name, value] of Object.entries({
+  BUDGET_GLOBAL_DAY_USD: "5", BUDGET_OPENAI_RUN_USD: "2", BUDGET_OPENAI_CAMPAIGN_USD: "2", BUDGET_OPENAI_DAY_USD: "5",
+  OPENAI_ESTIMATE_CALL_USD: "0.05", BUDGET_APOLLO_RUN_CREDITS: "10", BUDGET_APOLLO_CAMPAIGN_CREDITS: "10",
+  BUDGET_APOLLO_DAY_CREDITS: "10", APOLLO_ESTIMATE_CALL_CREDITS: "1", APOLLO_USD_PER_CREDIT: "0.10",
+})) process.env[name] ??= value;
 process.env.OUTBOX_DISPATCH_ENABLED = "true";
 process.env.OUTBOX_MAX_ATTEMPTS = "3";
 process.env.N8N_BASE_URL = process.env.N8N_BASE_URL ?? "http://localhost:5678";

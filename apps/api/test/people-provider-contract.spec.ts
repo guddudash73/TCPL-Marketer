@@ -8,6 +8,7 @@ import {
   normalizePersonCandidate,
 } from "@tcpl-marketer/validation";
 import { describe, expect, it, vi } from "vitest";
+import { testCall } from "./support/provider-call.js";
 
 describe("PeopleProvider contract", () => {
   it("returns a normalized provider-independent person candidate", async () => {
@@ -31,7 +32,7 @@ describe("PeopleProvider contract", () => {
         confidence: 0.95,
       },
     });
-    const searchPeople = vi.fn().mockResolvedValue([candidate]);
+    const searchPeople = vi.fn().mockResolvedValue({ candidates: [candidate], usage: { requests: 1, credits: 0 } });
     const provider: PeopleProvider = {
       searchPeople,
       enrichPerson: vi.fn().mockResolvedValue(null),
@@ -56,7 +57,9 @@ describe("PeopleProvider contract", () => {
       maximumResults: 10,
     });
 
-    const result = await provider.searchPeople(input);
+    const run = await provider.searchPeople(input, testCall("apollo", "people-search"));
+    expect(run.usage).toEqual({ requests: 1, credits: 0 });
+    const result = run.candidates;
 
     expect(result[0]).toMatchObject({
       fullName: "Jordan   Smith",
@@ -74,6 +77,6 @@ describe("PeopleProvider contract", () => {
         apolloPerson: { id: "apollo-specific" },
       }).success,
     ).toBe(false);
-    expect(searchPeople).toHaveBeenCalledWith(input);
+    expect(searchPeople).toHaveBeenCalledWith(input, expect.anything());
   });
 });

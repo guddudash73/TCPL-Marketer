@@ -12,11 +12,14 @@ import type {
   ClaimExtractionRequest,
   ClaimExtractor,
   ClaimExtractorConfiguration,
+  ProviderCallContext,
   ProviderRun,
   ProviderUsage,
 } from "@tcpl-marketer/provider-contracts";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
+
+import { requireProviderCallContext } from "../provider-budget/provider-call-context.js";
 
 export const OPENAI_CLAIM_CLIENT = Symbol("OPENAI_CLAIM_CLIENT");
 
@@ -39,7 +42,9 @@ export class OpenAIClaimExtractionAdapter implements ClaimExtractor {
 
   async extract(
     input: ClaimExtractionRequest,
+    context: ProviderCallContext,
   ): Promise<ProviderRun<ClaimExtraction>> {
+    requireProviderCallContext(context, "openai").recordRequest();
     const { model } = this.getConfiguration();
     try {
       const response = await this.client.responses.parse({
@@ -176,8 +181,10 @@ function mapUsage(usage: {
 
 function providerFailure(message: string, error: unknown): Error {
   if (error instanceof ServiceUnavailableException) return error;
+  // The original error stays as the cause so the shared outcome mapper can see the provider's own status.
   return new BadGatewayException(
     `${message}: ${error instanceof Error ? error.message.slice(0, 300) : "unknown provider error"}`,
+    { cause: error },
   );
 }
 

@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { CLAIM_EXTRACTOR } from "@tcpl-marketer/provider-contracts";
 import OpenAI from "openai";
 
+import { AuditModule } from "../audit/audit.module.js";
 import { ClaimExtractionService } from "./claim-extraction.service.js";
 import { CompanyFitEvidenceService } from "./company-fit-evidence.service.js";
 import { InternalCompanyIntelligenceController } from "./internal-company-intelligence.controller.js";
@@ -11,6 +12,7 @@ import {
 } from "./openai-claim-extraction.adapter.js";
 
 @Module({
+  imports: [AuditModule],
   controllers: [InternalCompanyIntelligenceController],
   providers: [
     ClaimExtractionService,

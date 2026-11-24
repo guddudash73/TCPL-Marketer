@@ -1,6 +1,7 @@
 import type { SearchCampaignContext } from "@tcpl-marketer/provider-contracts";
 import type OpenAI from "openai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { testCall } from "./support/provider-call.js";
 
 import { OpenAISearchAdapter } from "../src/search/openai-search.adapter.js";
 
@@ -102,12 +103,15 @@ describe("OpenAISearchAdapter provider contract", () => {
     const client = { responses: { parse } } as unknown as OpenAI;
     const adapter = new OpenAISearchAdapter(client);
 
-    const planning = await adapter.plan(context);
-    const discovery = await adapter.search({
-      context,
-      plan: planning.data,
-      maximumResults: 5,
-    });
+    const planning = await adapter.plan(context, testCall("openai", "search-plan"));
+    const discovery = await adapter.search(
+      {
+        context,
+        plan: planning.data,
+        maximumResults: 5,
+      },
+      testCall("openai", "web-search"),
+    );
 
     expect(planning.data.strategies).toHaveLength(1);
     expect(planning.prompt).toEqual({
@@ -116,6 +120,9 @@ describe("OpenAISearchAdapter provider contract", () => {
     });
     expect(discovery.data).toHaveLength(1);
     expect(discovery.usage?.totalTokens).toBe(275);
+    // One web_search_call item in the output is one billed search; the planning call has none.
+    expect(discovery.usage?.webSearchCalls).toBe(1);
+    expect(planning.usage?.webSearchCalls).toBe(0);
     expect(parse.mock.calls[1]?.[0]).toMatchObject({
       model: "test-search-model",
       store: false,
@@ -150,18 +157,21 @@ describe("OpenAISearchAdapter provider contract", () => {
     } as unknown as OpenAI);
 
     await expect(
-      adapter.search({
-        context,
-        plan: {
-          strategies: [
-            {
-              type: "DIRECT_COMPANY",
-              queries: ["US LiDAR surveying companies"],
-            },
-          ],
+      adapter.search(
+        {
+          context,
+          plan: {
+            strategies: [
+              {
+                type: "DIRECT_COMPANY",
+                queries: ["US LiDAR surveying companies"],
+              },
+            ],
+          },
+          maximumResults: 5,
         },
-        maximumResults: 5,
-      }),
+        testCall("openai", "web-search"),
+      ),
     ).rejects.toThrow("no results grounded in consulted sources");
   });
 });

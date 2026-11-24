@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { testCrawlRunner } from "./support/provider-call.js";
 
 import { createPrismaClient } from "@tcpl-marketer/database";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { CrawlRunner } from "../src/crawler/crawl-runner.js";
 import { CrawlFetchError, fetchContent, renderJavaScriptPage } from "../src/crawler/page-fetcher.js";
 import type { SafePage } from "../src/crawler/safe-http.js";
 import type { DatabaseService } from "../src/database/database.service.js";
@@ -88,7 +88,7 @@ describe("crawl run persistence", () => {
   });
 
   it("stores successful and failed attempts and completes the run", async () => {
-    const runner = new CrawlRunner({ client: database } as DatabaseService);
+    const runner = testCrawlRunner({ client: database } as DatabaseService);
     const run = await runner.run(organizationId, origin,
       async () => ({ homepageUrl: `${origin}/`, robotsUrl: `${origin}/robots.txt`, sitemapUrls: [],
         pageUrls: [`${origin}/`, `${origin}/missing`] }),
@@ -111,7 +111,7 @@ describe("crawl run persistence", () => {
   });
 
   it("records a planning failure as a failed run", async () => {
-    const runner = new CrawlRunner({ client: database } as DatabaseService);
+    const runner = testCrawlRunner({ client: database } as DatabaseService);
     const before = await database.crawlRun.count({ where: { organizationId } });
     await expect(runner.run(organizationId, origin, async () => { throw new Error("Robots denied"); }))
       .rejects.toThrow("Robots denied");

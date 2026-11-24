@@ -13,6 +13,8 @@ export interface CorrelationStore {
   correlationId: string;
   campaignId?: string;
   stageRunId?: string;
+  /** Attempt number of the stage run that holds the lease; part of the provider call key. */
+  stageAttempt?: number;
 }
 
 const storage = new AsyncLocalStorage<CorrelationStore>();
@@ -49,9 +51,11 @@ export function bindCampaign(campaignId: string): void {
   if (store) store.campaignId = campaignId;
 }
 
-export function bindStageRun(stageRunId: string): void {
+export function bindStageRun(stageRunId: string, attempt?: number): void {
   const store = storage.getStore();
-  if (store) store.stageRunId = stageRunId;
+  if (!store) return;
+  store.stageRunId = stageRunId;
+  if (attempt !== undefined) store.stageAttempt = attempt;
 }
 
 /**
