@@ -146,7 +146,9 @@ describe("signed service requests (private PostgreSQL database)", () => {
         usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
       });
     };
-    await app.init();
+    // Listen once on a real port. With only init(), every supertest call starts the same server itself and the first
+    // call to finish closes it under the others, which resets requests still in flight on a slower machine.
+    await app.listen(0, "127.0.0.1");
   }, 120_000);
 
   afterAll(async () => {
@@ -497,7 +499,10 @@ describe("signed service requests (private PostgreSQL database)", () => {
       rejections.limiter = new RejectionAuditLimiter(5, 100);
       const campaign = await seedCampaign();
       const path = contextPath(campaign.id);
-      await Promise.all(Array.from({ length: 30 }, () => server().get(path).expect(401)));
+      // Thirty unsigned requests in bursts of ten: well over the limit of five rows, without opening thirty connections at once.
+      for (let burst = 0; burst < 3; burst += 1) {
+        await Promise.all(Array.from({ length: 10 }, () => server().get(path).expect(401)));
+      }
       expect(await database.auditLog.count({ where: { action: "service_auth.rejected" } })).toBe(5);
     });
 
